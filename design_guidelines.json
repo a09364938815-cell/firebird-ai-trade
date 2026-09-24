@@ -1,0 +1,156 @@
+{
+  "project_identity": {
+    "app_name": "Firebird AI Trade",
+    "tagline": "Professional AI Web Application for Crypto, Memecoins & NFT Trading",
+    "design_archetype": "ARCHETYPE 7 & 2 FUSION - Electric Obsidian High-Performance Tactical Web3",
+    "theme_mode": "Dark Theme Default (Obsidian #090B10, Fiery Phoenix Accents #FF5500 / #FF2E00, Cyber Gold #FFB800, Emerald Gains #00E676, Crimson Risk #FF1744)",
+    "target_audience": "Crypto traders, NFT collectors, DeFi yield hunters, memecoin scalpers, and AI quantitative trading enthusiasts",
+    "emotional_tone": "High-octane precision, quantitative authority, fiery kinetic energy, tactical clarity, web3 futuristic elegance"
+  },
+  "visual_enhancers": {
+    "hero_and_surfaces": "Deep obsidian glassmorphism with delicate ember glow borders (`border-amber-500/20 hover:border-orange-500/40`), subtle background noise grain texture, neon cyber accents, dynamic glowing tracing beams on active trade cards.",
+    "brand_logo": "Firebird / Phoenix icon must be prominently preserved in top-left navigation with animated ember glow and fiery gradient text ('FIREBIRD AI').",
+    "rtl_support": "Full Right-To-Left layout support for Persian (FA) language option alongside 10 global languages (EN, ES, DE, FR, ZH, JA, RU, PT, TR, FA). Dynamic direction switching (`dir='rtl'` and `font-fa` for Persian typography)."
+  },
+  "typography": {
+    "font_family_heading": "Outfit, Clash Display, Space Grotesk, system-ui",
+    "font_family_body": "Inter, DM Sans, sans-serif",
+    "font_family_mono": "JetBrains Mono, Fira Code, monospace for tickers, prices, wallet addresses, and gas fees",
+    "font_family_persian": "Vazirmatn, Noto Sans Arabic, sans-serif for Persian RTL mode",
+    "scale": {
+      "h1_hero": "text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight",
+      "h2_section": "text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight",
+      "h3_card": "text-xl sm:text-2xl font-semibold",
+      "h4_widget": "text-lg font-medium",
+      "body": "text-sm sm:text-base text-slate-300 leading-relaxed",
+      "caption": "text-xs font-mono uppercase tracking-widest text-slate-400"
+    }
+  },
+  "colors": {
+    "background_primary": "#07090E",
+    "background_secondary": "#0D111A",
+    "background_card": "#121824",
+    "background_overlay": "rgba(9, 11, 16, 0.85)",
+    "border_subtle": "rgba(255, 255, 255, 0.08)",
+    "border_active": "rgba(255, 85, 0, 0.4)",
+    "accent_firebird_orange": "#FF5500",
+    "accent_phoenix_red": "#FF2E00",
+    "accent_cyber_gold": "#FFB800",
+    "accent_success_green": "#00E676",
+    "accent_danger_red": "#FF1744",
+    "accent_info_cyan": "#00E5FF",
+    "accent_purple_nft": "#B026FF",
+    "text_primary": "#F8FAFC",
+    "text_secondary": "#94A3B8",
+    "text_muted": "#64748B"
+  },
+  "layout_and_grid": {
+    "architecture": "Fixed Header + Left Central Navigation Sidebar + Scrollable Main Content Workspace + Right Market Feed / AI Assistant Panel (Collapsible)",
+    "navigation_sidebar": "Fixed left sidebar (right side in RTL mode) containing core navigation: Dashboard, Live Charts, Signals, Auto-Trade, Manual Trade, Memecoin Trap Scanner, 5x5 Backtest, Positions & Reports, NFT Collection (Firebird 555), Strategy Lab, Exchange Hub, Beginner Guide TOC.",
+    "bento_grid_mode": "MODE B: High Density Tactical Dashboard Grid (`grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6`). Child widgets must use `h-full` to align perfectly without jagged edges.",
+    "padding_system": "Generous spacing philosophy: Cards have `p-5` to `p-6` internal padding to prevent content collision with 1px borders."
+  },
+  "key_features_and_components": {
+    "demo_sandbox_mode": {
+      "default_balance": 100,
+      "currency": "USD",
+      "behavior": "Real trading off by default. Auto buy/sell and manual orders operate seamlessly in $100 Demo Sandbox mode with live price simulation."
+    },
+    "ai_assistant_model": {
+      "name": "GPT-5.6 AI Core",
+      "capabilities": "Coin safety scoring (0-100), automated signal generation, risk lock monitoring, trap/fake token detection, and backtesting strategy recommendations."
+    },
+    "memecoin_scanner": {
+      "anti_scam_filter": "Strict trap detection analyzing liquidity locks, mint authority, honeypot code, rugpull risk score, and holder concentration. Only highlights memecoins with score >= 75/100."
+    },
+    "nft_collection": {
+      "name": "Firebird 555 Album",
+      "total_supply": 555,
+      "rares_count": 6,
+      "rare_items": ["Firebird #001 Sovereign Ember", "Firebird #088 Cosmic Flame", "Firebird #111 Cybernetic Phoenix", "Firebird #333 Golden Ash", "Firebird #444 Nebula Wing", "Firebird #555 Eternal Rebirth"],
+      "features": "Interactive 3D/hover gallery, metadata inspector, rarity rank filter, simulated floor price & bidding."
+    },
+    "exchange_hub": {
+      "supported_exchanges": ["Binance", "Kraken", "Coinbase", "OKX", "Bybit", "Uniswap / DEX"],
+      "features": "API Key management toggle, connection status indicators, sandbox vs live mode switch."
+    },
+    "multi_language": {
+      "supported_languages": ["EN", "ES", "DE", "FR", "ZH", "JA", "RU", "PT", "TR", "FA"],
+      "default": "EN",
+      "rtl_languages": ["FA"]
+    }
+  },
+  "image_urls": {
+    "firebird_art": [
+      {
+        "url": "https://images.unsplash.com/photo-1693418322627-f92ded866a58?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDB8MHwxfHNlYXJjaHwzfHxmaXJlYmlyZCUyMHBob2VuaXglMjBkaWdpdGFsJTIwYXJ0JTIwbmZ0fGVufDB8fHx8MTc5MDI4NjA5MXww&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract bird with bright glowing phoenix colors",
+        "category": "nft_rare_1"
+      },
+      {
+        "url": "https://images.pexels.com/photos/5109305/pexels-photo-5109305.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Vibrant abstract fiery explosion glowing orange red",
+        "category": "nft_rare_2"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1785621715732-dfe0d1449720?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDB8MHwxfHNlYXJjaHw0fHxmaXJlYmlyZCUyMHBob2VuaXglMjBkaWdpdGFsJTIwYXJ0JTIwbmZ0fGVufDB8fHx8MTc5MDI4NjA5MXww&ixlib=rb-4.1.0&q=85",
+        "description": "Swirling vibrant neon flame background",
+        "category": "nft_rare_3"
+      },
+      {
+        "url": "https://images.pexels.com/photos/16229618/pexels-photo-16229618.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Striking image blending flames and metallic geometric lines",
+        "category": "nft_rare_4"
+      }
+    ],
+    "crypto_charts": [
+      {
+        "url": "https://images.unsplash.com/photo-1689732888407-310424e3a372?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzOTB8MHwxfHNlYXJjaHw0fHxjcnlwdG8lMjB0cmFkaW5nJTIwZGFzaGJvYXJkJTIwY2hhcnQlMjBncmFwaHxlbnwwfHx8fDE3OTAyODYwOTF8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Candlestick stock chart on dark screen",
+        "category": "dashboard_analytics_hero"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzOTB8MHwxfHNlYXJjaHwyfHxjcnlwdG8lMjB0cmFkaW5nJTIwZGFzaGJvYXJkJTIwY2hhcnQlMjBncmFwaHxlbnwwfHx8fDE3OTAyODYwOTF8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Stock market candlestick chart dark mode",
+        "category": "chart_preview"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1551288049-bebda4e38f71?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzOTB8MHwxfHNlYXJjaHwxfHxjcnlwdG8lMjB0cmFkaW5nJTIwZGFzaGJvYXJkJTIwY2hhcnQlMjBncmFwaHxlbnwwfHx8fDE3OTAyODYwOTF8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Graphs of performance analytics on dark screen",
+        "category": "reports_preview"
+      }
+    ]
+  },
+  "data_testid_conventions": {
+    "auth": {
+      "login_email": "login-email-input",
+      "login_password": "login-password-input",
+      "login_submit": "login-submit-button",
+      "register_submit": "register-submit-button"
+    },
+    "navigation": {
+      "sidebar": "fixed-nav-sidebar",
+      "toc_guide": "beginner-guide-toc",
+      "lang_switcher": "language-switcher-dropdown",
+      "demo_toggle": "demo-mode-toggle"
+    },
+    "trading": {
+      "candlestick_chart": "candlestick-chart-container",
+      "auto_trade_toggle": "auto-trade-toggle-button",
+      "manual_buy_btn": "manual-buy-button",
+      "manual_sell_btn": "manual-sell-button",
+      "memecoin_scanner": "memecoin-scanner-table",
+      "backtest_run_btn": "backtest-run-button",
+      "nft_gallery": "nft-gallery-grid"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Rebuild Firebird AI Trade in React (JS/JSX) with Tailwind CSS, Lucide Icons, Recharts/Chart.js, Sonner toast, and Framer Motion.",
+    "Preserve Firebird logo motif with fiery gradient and ember glow effects.",
+    "Ensure $100 Demo Mode is enabled by default with real-time portfolio simulation.",
+    "Implement Persian language (FA) support with full RTL direction shift (`dir='rtl'`).",
+    "Integrate memecoin scanner with safety scoring (detecting scam/trap tokens).",
+    "Integrate NFT 555 collection gallery highlighting the 6 special rare items.",
+    "Ensure all interactive elements carry proper `data-testid` attributes."
+  ]
+}
