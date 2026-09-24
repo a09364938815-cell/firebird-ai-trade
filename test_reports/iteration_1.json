@@ -1,0 +1,39 @@
+{
+  "summary": "Full e2e testing of Firebird AI Trade. Backend: 27/28 pytest passed (96%). Frontend: login flow works correctly (no bounce), all 11 nav routes load, dashboard shows $100 demo portfolio, NFT collection renders 555 supply + 6 legendary rares, AI chat returns GPT-5.6 replies, manual trade page shows open positions, RTL Persian language switch works, logout redirects to /login. Login response returns access_token; Bearer fallback works alongside httpOnly cookies.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/login", "issue": "Brute-force lockout NOT triggering. After 6 wrong-password attempts on same IP+email, all return 401 (expected 429 after 5). Verified via direct curl loop. Likely cause: identifier uses request.client.host which behind K8s ingress may be a shared/rotating proxy IP so login_attempts documents are keyed differently each request. Consider using X-Forwarded-For (leftmost) or key lockout by email only."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Backend: Fix brute-force lockout — read client IP from X-Forwarded-For header (preview/prod is behind ingress) or key rate-limit by email alone. Current implementation never trips 429.",
+    "Frontend nav data-testids are named `nav-nav_dashboard`, `nav-nav_charts` etc. (double prefix because item.key already starts with `nav_`). Cosmetic — the request said `nav-*` but they still work. Consider renaming keys to `dashboard`,`charts`,... so testids become `nav-dashboard` matching the design_guidelines spec."
+  ],
+  "critical_code_review_comments": [
+    "auth.py line 156: lockout uses ip:email identifier but request.client.host in K8s = pod IP (may not be stable per attacker). Use forwarded IP header or lockout by email.",
+    "auth.py cookies set with SameSite=None+Secure — correct for cross-site preview, but Bearer fallback is essential (implemented in lib/api.js).",
+    "server.py: CORS allow_origins uses single FRONTEND_URL — good (credentials require explicit origin, no wildcard).",
+    "All routers correctly /api-prefixed; MongoDB _id excluded via _clean_user helper.",
+    "bcrypt hashes verified in $2b$ format (via seed_admin + register)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (created)"
+  ],
+  "success_rate": {"backend": "96%", "frontend": "100%"},
+  "test_credentials": "admin@firebird.ai / Firebird#2026 works. Registration with any 6+ char password works and gives $100 demo balance.",
+  "seed_data_creation": "seed_admin + seed_nft (555 items with 6 legendary rares) run on startup. Confirmed via /api/nft/stats.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "backend_test.py at /app/backend/tests/backend_test.py covers auth, market, trading, scanner, NFT, AI, brute-force. Run with: pytest /app/backend/tests/ -v. Only failing test is test_brute_force_lockout — this is a real backend bug, not a test bug. Frontend nav data-testids follow pattern `nav-nav_dashboard` (double prefix). Login uses localStorage 'fb_token' + Bearer, so cookies dropped by preview browser are OK.",
+  "rca_of_the_issue": "Brute force lockout: verify_password fails -> code updates login_attempts doc keyed on `{request.client.host}:{email}`. In the preview environment (Kubernetes ingress -> uvicorn), request.client.host resolves to the immediate proxy pod IP which may differ across requests or be constant but distinct per test. Six consecutive wrong-password logins all returned 401 with no lockout. Fix: parse X-Forwarded-For (first value) as client IP, OR lockout keyed only on email. Reproduction: POST /api/auth/login with valid email + wrong password 6 times in a row — expected 429 on 6th, got 401."
+}
