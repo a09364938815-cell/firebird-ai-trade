@@ -123,8 +123,23 @@ async def _new_user_doc(email: str, password: str, name: str, role: str = "user"
 
 
 @auth_router.post("/register")
-async def register(data: RegisterInput, response: Response):
+async def register(data: RegisterInput, response: Response, request: Request):
     email = data.email.lower()
+    fwd = request.headers.get("x-forwarded-for", "")
+    ip = fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "unknown")
+    # anti-bot: max 5 registrations per IP per hour
+    now = datetime.now(timezone.utc)
+    reg = await db.register_attempts.find_one({"ip": ip})
+    if reg:
+        window_start = datetime.fromisoformat(reg["window_start"])
+        if (now - window_start).total_seconds() < 3600 and reg.get("count", 0) >= 5:
+            raise HTTPException(status_code=429, detail="Too many sign-ups from this network. Try later.")
+        if (now - window_start).total_seconds() >= 3600:
+            await db.register_attempts.update_one({"ip": ip}, {"$set": {"count": 1, "window_start": now.isoformat()}})
+        else:
+            await db.register_attempts.update_one({"ip": ip}, {"$inc": {"count": 1}})
+    else:
+        await db.register_attempts.insert_one({"ip": ip, "count": 1, "window_start": now.isoformat()})
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
     doc = await _new_user_doc(email, data.password, data.name)

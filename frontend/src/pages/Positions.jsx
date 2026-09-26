@@ -63,9 +63,9 @@ export default function Positions() {
         ) : (
           <div className="space-y-2">
             {positions.map((p) => (
-              <div key={p.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/40">
+              <div key={p.id} className="flex items-center justify-between flex-wrap gap-2 p-3 rounded-lg bg-secondary/40">
                 <div><span className="font-head font-bold">{p.symbol}</span><span className="text-xs text-muted-foreground ml-2">{p.side} · {p.source}</span></div>
-                <div className="flex items-center gap-5 text-sm">
+                <div className="flex items-center flex-wrap gap-2 sm:gap-5 text-xs sm:text-sm">
                   <span className="mono">${fmt(p.entry_price)} → ${fmt(p.current_price)}</span>
                   <span className={`mono w-20 text-right ${pnlColor(p.pnl)}`}>{p.pnl > 0 ? "+" : ""}${fmt(p.pnl)}</span>
                   <button onClick={() => closeOne(p.id)} className="text-xs px-3 py-1 rounded-md border border-border hover:border-destructive hover:text-danger">{t("close")}</button>
@@ -80,7 +80,8 @@ export default function Positions() {
         {(r?.trades || []).length === 0 ? (
           <div className="text-sm text-muted-foreground py-6 text-center">No closed trades yet</div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[520px]">
             <thead>
               <tr className="text-xs text-muted-foreground uppercase text-left">
                 <th className="py-2">{t("symbol")}</th><th>{t("action")}</th><th>{t("entry")}</th><th>Exit</th><th>{t("pnl")}</th><th>Reason</th>
@@ -99,6 +100,7 @@ export default function Positions() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Panel>
     </div>

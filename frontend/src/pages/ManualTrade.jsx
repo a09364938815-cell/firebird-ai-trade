@@ -85,12 +85,12 @@ export default function ManualTrade() {
           ) : (
             <div className="space-y-2">
               {portfolio.data.positions.map((p) => (
-                <div key={p.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/40" data-testid={`position-${p.symbol}`}>
+                <div key={p.id} className="flex items-center justify-between flex-wrap gap-2 p-3 rounded-lg bg-secondary/40" data-testid={`position-${p.symbol}`}>
                   <div>
                     <span className="font-head font-bold">{p.symbol}</span>
                     <span className="text-xs text-muted-foreground ml-2">{p.side} · {p.source}</span>
                   </div>
-                  <div className="flex items-center gap-5 text-sm">
+                  <div className="flex items-center flex-wrap gap-2 sm:gap-5 text-xs sm:text-sm">
                     <span className="mono">{t("entry")} ${fmt(p.entry_price)}</span>
                     <span className="mono">{t("current")} ${fmt(p.current_price)}</span>
                     <span className={`mono w-20 text-right ${pnlColor(p.pnl)}`}>{p.pnl > 0 ? "+" : ""}${fmt(p.pnl)}</span>

@@ -64,7 +64,8 @@ export default function Backtest() {
             <Stat label="Return" value={`${result.overall_return_pct > 0 ? "+" : ""}${result.overall_return_pct}%`} accent={pnlColor(result.overall_return_pct)} />
           </div>
           <Panel title="Window Results" testid="backtest-results">
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[420px]">
               <thead>
                 <tr className="text-xs text-muted-foreground uppercase text-left">
                   <th className="py-2">Window</th><th>Trades</th><th>{t("win_rate")}</th><th>Return</th>
@@ -81,6 +82,7 @@ export default function Backtest() {
                 ))}
               </tbody>
             </table>
+            </div>
             <p className="text-xs text-muted-foreground mt-4">{result.disclaimer}</p>
           </Panel>
         </>

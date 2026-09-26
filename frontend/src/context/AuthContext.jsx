@@ -11,7 +11,10 @@ export function AuthProvider({ children }) {
     api
       .get("/auth/me")
       .then((r) => setUser((prev) => (prev && prev.id ? prev : r.data)))
-      .catch(() => setUser((prev) => (prev && prev.id ? prev : false)))
+      .catch(() => {
+        clearToken();
+        setUser((prev) => (prev && prev.id ? prev : false));
+      })
       .finally(() => setLoading(false));
   }, []);
 

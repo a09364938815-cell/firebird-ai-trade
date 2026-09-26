@@ -1,0 +1,18 @@
+# Firebird AI Trade — LOGIN KEY (external copy)
+
+Use these credentials to log into the app for testing.
+
+## Owner / Admin account
+- URL: https://trade-intelligence-73.preview.emergentagent.com/login
+- Email: admin@firebird.ai
+- Password: Firebird#2026
+- Role: admin (owner)
+
+## Create your own test user
+- Click "Sign Up" and register any email + a password (min 6 characters).
+- Every new user starts in Demo mode with a $100 demo balance.
+
+## Notes
+- Real trading is OFF by default (demo/sandbox only).
+- Auth is server-side (JWT + bcrypt). Brute-force lockout: 5 wrong logins = 15 min lock.
+- Sign-up is rate-limited (max 5 per network per hour) to block bots.

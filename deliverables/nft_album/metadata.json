@@ -1,0 +1,74 @@
+{
+  "collection": "Firebird 555",
+  "description": "555 phoenix firebirds rising from the ashes. 6 legendary rares. Each Firebird carries a story of destruction and rebirth.",
+  "network_suggestion": "Ethereum (ERC-721) or Solana (Metaplex) — choose at launch",
+  "note": "This folder is a launchable STARTER pack containing the 6 legendary rares + 2 common templates. The full 555 supply with unique destructive artworks + individual stories is the next production phase.",
+  "rares": [
+    {
+      "token_id": 1,
+      "name": "Firebird #001 — Sovereign Ember",
+      "image": "images/firebird_001_sovereign_ember.jpeg",
+      "story": "The first flame. Sovereign Ember remembers every empire it has reduced to ash. Where its crown of fire passes, thrones melt and kingdoms are rewritten. It does not rule the fire — it IS the fire.",
+      "attributes": [
+        {"trait_type": "Tier", "value": "Legendary"},
+        {"trait_type": "Element", "value": "Sovereign Ember"},
+        {"trait_type": "Rarity Rank", "value": 1}
+      ]
+    },
+    {
+      "token_id": 88,
+      "name": "Firebird #088 — Cosmic Flame",
+      "image": "images/firebird_088_cosmic_flame.jpeg",
+      "story": "Born between dying stars, Cosmic Flame carries the heat of collapsing suns. Whole worlds have gone dark in the wake of its wings — not out of malice, but because rebirth demands an ending.",
+      "attributes": [
+        {"trait_type": "Tier", "value": "Legendary"},
+        {"trait_type": "Element", "value": "Cosmic Flame"},
+        {"trait_type": "Rarity Rank", "value": 2}
+      ]
+    },
+    {
+      "token_id": 111,
+      "name": "Firebird #111 — Cybernetic Phoenix",
+      "image": "images/firebird_111_cybernetic_phoenix.jpeg",
+      "story": "Half machine, half fire. The Cybernetic Phoenix was forged when a dying network chose to burn itself alive rather than be controlled. A warning wrapped in chrome and flame.",
+      "attributes": [
+        {"trait_type": "Tier", "value": "Legendary"},
+        {"trait_type": "Element", "value": "Cybernetic"},
+        {"trait_type": "Rarity Rank", "value": 3}
+      ]
+    },
+    {
+      "token_id": 333,
+      "name": "Firebird #333 — Golden Ash",
+      "image": "images/firebird_333_golden_ash.jpeg",
+      "story": "From the ruins of a golden city rose Golden Ash. Everything it touches turns first to gold, then to ash. Greed and glory are the same fire in different light.",
+      "attributes": [
+        {"trait_type": "Tier", "value": "Legendary"},
+        {"trait_type": "Element", "value": "Golden Ash"},
+        {"trait_type": "Rarity Rank", "value": 4}
+      ]
+    },
+    {
+      "token_id": 444,
+      "name": "Firebird #444 — Nebula Wing",
+      "image": "images/firebird_444_nebula_wing.jpeg",
+      "story": "Nebula Wing spreads galaxies across the void with a single beat. Beautiful, silent, and final — for behind that beauty burns the memory of everything it has already consumed.",
+      "attributes": [
+        {"trait_type": "Tier", "value": "Legendary"},
+        {"trait_type": "Element", "value": "Nebula"},
+        {"trait_type": "Rarity Rank", "value": 5}
+      ]
+    },
+    {
+      "token_id": 555,
+      "name": "Firebird #555 — Eternal Rebirth",
+      "image": "images/firebird_555_eternal_rebirth.jpeg",
+      "story": "The last and the first. As the old phoenix burns, Eternal Rebirth is born from its white-hot core — a warning and a promise: nothing truly ends, it only begins again in fire.",
+      "attributes": [
+        {"trait_type": "Tier", "value": "Legendary"},
+        {"trait_type": "Element", "value": "Eternal"},
+        {"trait_type": "Rarity Rank", "value": 6}
+      ]
+    }
+  ]
+}
