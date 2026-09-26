@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 2 focused on the reported SECURITY bug (any-email login perception via stale token) and MOBILE responsiveness. Backend: 28/28 original tests + 7/7 new security tests pass (35/35 = 100%). Frontend e2e on 390x844 mobile: unregistered email stays on /login (no dashboard bounce), stale/invalid fb_token in localStorage is cleared by AuthContext on /me 401 and user is redirected to /login, admin login works, logout redirects, protected routes gated. Mobile: 0 horizontal overflow across all 10 protected pages (docW==winW==390), hamburger opens overlay sidebar showing all nav items, dashboard shows portfolio (~$99.74/$100), NFT 555 supply + 6 rares confirmed. Brute-force lockout now works (X-Forwarded-For fix from iter 1 verified).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_security_iter2.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "auth.py register throttle uses X-Forwarded-For leftmost IP correctly; behind K8s ingress this is the client IP. 5/hour cap is reasonable but a shared preview IP could false-positive real testers — consider combining with a hCaptcha/turnstile challenge before ratcheting up limits in prod.",
+    "AuthContext.jsx correctly calls clearToken() then setUser(false) on /me failure — this is exactly the fix for the reported 'any email logged in' perception. Good.",
+    "api.js Bearer interceptor + httpOnly cookies is a solid belt-and-suspenders pattern for the cross-site preview.",
+    "seed_admin is idempotent and updates password_hash when ADMIN_PASSWORD env changes — matches playbook.",
+    "Register response returns access_token in body (localStorage) AND sets httpOnly cookie — consistent with login flow."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_security_iter2.py (created — 7 new tests for security fixes)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@firebird.ai / Firebird#2026 — verified working. Any new email + 6+ char password registers and returns access_token + $100 demo balance.",
+  "seed_data_creation": "seed_admin + 555 NFT items with 6 legendary rares confirmed via /api/nft/stats and UI.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Two backend test files: backend_test.py (28 tests, general regression) and test_security_iter2.py (7 tests, security-focused: unregistered-email 401, duplicate register 400, email lowercase normalization, invalid/stale token 401, response leaks). Run all with: pytest /app/backend/tests/ -v. Note: emails ending in .test TLD are rejected as reserved by pydantic EmailStr — use @nowhere.example.com. Frontend admin dashboard is at path '/' not '/dashboard'. Mobile hamburger testid is 'mobile-menu-toggle'; sidebar testid 'fixed-nav-sidebar' becomes an overlay on mobile (viewport <= 768).",
+  "rca_of_the_issue": "Reported 'any email lets me in' was a stale-token perception bug: AuthContext previously kept an old user object if /me failed. Fix (verified): on /me 401, clearToken() from fb_token localStorage + setUser(false), forcing redirect to /login. Backend login already returns 401 for unknown email. Mobile fit fix (verified): html/body overflow-x hidden + tables wrapped in overflow-x-auto with min-w + rows using flex-wrap keep docW==winW==390 across all 10 protected routes."
+}
