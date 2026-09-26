@@ -2,7 +2,17 @@
   "collection": "Firebird 555",
   "description": "555 phoenix firebirds rising from the ashes. 6 legendary rares. Each Firebird carries a story of destruction and rebirth.",
   "network_suggestion": "Ethereum (ERC-721) or Solana (Metaplex) — choose at launch",
-  "note": "This folder is a launchable STARTER pack containing the 6 legendary rares + 2 common templates. The full 555 supply with unique destructive artworks + individual stories is the next production phase.",
+  "note": "This folder is a launchable STARTER pack: 6 legendary rares + 8 destruction-themed artworks (used across the 549 non-rares) + 1 logo. The full 555 supply is generated procedurally in the app (each token gets one of these artworks + its own story + traits + realistic floor price). Suitable for launch on Ethereum (ERC-721) or Solana (Metaplex).",
+  "themed_art": [
+    {"title": "Wings of Nations", "image": "images/theme_wings_of_nations.jpeg", "story": "A great eagle takes the phoenix's fire. Its burning wings carry the colors of fallen nations — a quiet warning that no empire is eternal."},
+    {"title": "Under the Wings", "image": "images/theme_under_the_wings.jpeg", "story": "Beneath the phoenix's shadow, the Earth begins to glow. One beat of these wings and coastlines turn to embers. Beauty and ruin share the same breath."},
+    {"title": "Grip of Fire", "image": "images/theme_grip_of_fire.jpeg", "story": "An eagle-phoenix clutches a cracked, burning world. What it holds, it can save — or set alight. The choice was never ours."},
+    {"title": "Molten Ascension", "image": "images/theme_molten_ascension.jpeg", "story": "From the throat of an erupting mountain, the firebird climbs. Every eruption is only the world remembering how to begin again."},
+    {"title": "Warning of Rebirth", "image": "images/theme_warning_of_rebirth.jpeg", "story": "The old phoenix crumbles to white ash as a new one is born from its core. A warning written in fire — even intelligence must burn to be reborn."},
+    {"title": "The Descent", "image": "images/theme_the_descent.jpeg", "story": "A colossal firebird falls upon a sleeping city. Rivers of flame fill the streets. By dawn, only the story remains."},
+    {"title": "Ashen Dawn", "image": "images/theme_ashen_dawn.jpeg", "story": "Over a smoldering battlefield the phoenix waits for sunrise. Faint banners burn in the distance. Endings, too, can be gentle."},
+    {"title": "Firestorm", "image": "images/theme_firestorm.jpeg", "story": "Walls of flame close in, and still the firebird flies. It does not fear the storm — it is the storm."}
+  ],
   "rares": [
     {
       "token_id": 1,

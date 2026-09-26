@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Crown } from "lucide-react";
+import { Crown, X } from "lucide-react";
 import api from "@/lib/api";
 import { useI18n } from "@/i18n";
-import { PageTitle, Panel, Stat } from "@/components/common";
+import { PageTitle, Panel, Stat, fmt } from "@/components/common";
 
 const TIERS = ["all", "Legendary", "Epic", "Rare", "Common"];
 
@@ -18,6 +18,7 @@ export default function NFT() {
   const { t } = useI18n();
   const [tier, setTier] = useState("all");
   const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState(null);
 
   const stats = useQuery({ queryKey: ["nft-stats"], queryFn: () => api.get("/nft/stats").then((r) => r.data) });
   const collection = useQuery({
@@ -31,7 +32,7 @@ export default function NFT() {
 
   return (
     <div>
-      <PageTitle title={t("collection")} subtitle="Firebird / Phoenix — 555 items · 6 legendary rares" />
+      <PageTitle title={t("collection")} subtitle="Firebird / Phoenix — 555 items · 6 legendary rares · each with its own story of destruction and rebirth" />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Stat label="Total Supply" value={s?.total_supply ?? 555} accent="fire-text" />
@@ -44,14 +45,15 @@ export default function NFT() {
         <Panel title={t("rares")} className="mb-6" testid="nft-rares">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             {s.rares.map((r) => (
-              <div key={r.token_id} className="group relative rounded-xl overflow-hidden border border-gold/30 card-hover" data-testid={`rare-${r.token_id}`}>
+              <button key={r.token_id} onClick={() => setSelected(r)}
+                className="group relative rounded-xl overflow-hidden border border-gold/30 card-hover text-left" data-testid={`rare-${r.token_id}`}>
                 <img src={r.image} alt={r.name} className="w-full aspect-square object-cover" />
                 <div className="absolute top-2 right-2"><Crown size={16} className="text-gold" /></div>
                 <div className="p-2 bg-background/80">
                   <div className="text-xs font-head font-bold truncate">#{String(r.token_id).padStart(3, "0")}</div>
                   <div className="text-[10px] text-gold truncate">{r.name.replace(/Firebird #\d+ /, "")}</div>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </Panel>
@@ -68,16 +70,17 @@ export default function NFT() {
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4" data-testid="nft-gallery-grid">
         {items.map((it) => (
-          <div key={it.token_id} className={`rounded-xl overflow-hidden border card-hover ${tierColor[it.tier] || "border-border"}`} data-testid={`nft-${it.token_id}`}>
+          <button key={it.token_id} onClick={() => setSelected(it)}
+            className={`rounded-xl overflow-hidden border card-hover text-left ${tierColor[it.tier] || "border-border"}`} data-testid={`nft-${it.token_id}`}>
             <img src={it.image} alt={it.name} className="w-full aspect-square object-cover" loading="lazy" />
             <div className="p-2">
-              <div className="text-xs font-head font-bold">#{String(it.token_id).padStart(3, "0")}</div>
+              <div className="text-xs font-head font-bold truncate">#{String(it.token_id).padStart(3, "0")}</div>
               <div className="flex items-center justify-between">
                 <span className={`text-[10px] px-1.5 py-0.5 rounded border ${tierColor[it.tier]}`}>{it.tier}</span>
                 <span className="mono text-[10px] text-muted-foreground">{it.floor_price_eth}Ξ</span>
               </div>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -86,6 +89,42 @@ export default function NFT() {
         <span className="text-sm mono">{page} / {totalPages}</span>
         <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="px-4 py-2 rounded-lg border border-border disabled:opacity-40 hover:bg-secondary">Next</button>
       </div>
+
+      {selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="nft-detail-modal">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelected(null)} />
+          <div className="relative glass fire-glow rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto grid md:grid-cols-2 gap-0 fade-up">
+            <img src={selected.image} alt={selected.name} className="w-full h-full object-cover md:rounded-l-2xl max-h-[45vh] md:max-h-none" />
+            <div className="p-6">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs uppercase tracking-widest text-muted-foreground">Firebird #{String(selected.token_id).padStart(3, "0")}</div>
+                  <h3 className="font-head font-extrabold text-2xl fire-text">{selected.name.replace(/Firebird #\d+ ?/, "") || "Firebird"}</h3>
+                </div>
+                <button onClick={() => setSelected(null)} className="p-1.5 rounded-md hover:bg-secondary" data-testid="nft-modal-close"><X size={18} /></button>
+              </div>
+              <span className={`inline-block mt-2 text-xs px-2 py-0.5 rounded-full border ${tierColor[selected.tier]}`}>{selected.tier}</span>
+              <p className="text-sm text-slate-300 leading-relaxed mt-4">{selected.story}</p>
+              <div className="grid grid-cols-2 gap-3 mt-5 text-sm">
+                {selected.traits && Object.entries(selected.traits).map(([k, v]) => (
+                  <div key={k} className="p-2 rounded-lg bg-secondary/40">
+                    <div className="text-[10px] uppercase text-muted-foreground">{k}</div>
+                    <div className="font-medium">{v}</div>
+                  </div>
+                ))}
+                <div className="p-2 rounded-lg bg-secondary/40">
+                  <div className="text-[10px] uppercase text-muted-foreground">{t("floor_price")}</div>
+                  <div className="font-medium mono">{selected.floor_price_eth} ETH</div>
+                </div>
+                <div className="p-2 rounded-lg bg-secondary/40">
+                  <div className="text-[10px] uppercase text-muted-foreground">Rarity</div>
+                  <div className="font-medium mono">{selected.rarity_score}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
