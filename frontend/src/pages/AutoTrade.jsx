@@ -114,7 +114,7 @@ export default function AutoTrade() {
             </div>
             <div className="font-head font-bold text-lg mb-1">{on ? t("auto_trade_on") : t("auto_trade_off")}</div>
             <p className="text-sm text-muted-foreground mb-6 max-w-xs">
-              The bot scans 1h BUY signals and manages positions with trailing stop / take-profit in demo mode.
+              The bot scans all coins across 15m / 1h / 4h, enters the best signal (2:1 reward:risk, stop required), and manages positions with trailing take-profit in demo mode.
             </p>
             <button onClick={toggle} data-testid="auto-trade-toggle-button"
               className={`px-6 py-3 rounded-xl font-semibold ${on ? "bg-destructive/20 text-danger border border-destructive/40" : "fire-btn"}`}>
