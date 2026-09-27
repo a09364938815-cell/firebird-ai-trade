@@ -10,6 +10,7 @@ from trading import trading_router
 from scanner import scanner_router
 from ai_core import ai_router
 from nft import nft_router, seed_nft
+from owner import owner_router
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -32,6 +33,7 @@ app.include_router(trading_router)
 app.include_router(scanner_router)
 app.include_router(ai_router)
 app.include_router(nft_router)
+app.include_router(owner_router)
 
 import os
 

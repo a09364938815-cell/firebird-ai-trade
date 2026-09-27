@@ -18,6 +18,7 @@ import NFT from "@/pages/NFT";
 import Assistant from "@/pages/Assistant";
 import Settings from "@/pages/Settings";
 import Guide from "@/pages/Guide";
+import OwnerPanel from "@/pages/OwnerPanel";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -60,6 +61,7 @@ function App() {
               <Route path="assistant" element={<Assistant />} />
               <Route path="settings" element={<Settings />} />
               <Route path="guide" element={<Guide />} />
+              <Route path="owner" element={<OwnerPanel />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

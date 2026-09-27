@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import numpy as np
 from bson import ObjectId
@@ -27,6 +27,10 @@ class SettingsInput(BaseModel):
     stop_loss_pct: float | None = None
     auto_trade: bool | None = None
     language: str | None = None
+
+
+class WithdrawInput(BaseModel):
+    amount: float
 
 
 def _now():
@@ -102,17 +106,27 @@ async def _open_position(uid: str, symbol: str, side: str, usd: float, tickers, 
     return doc
 
 
+OWNER_RATE = 0.02  # owner commission on profit
+EARLY_WITHDRAWAL_FEE = 0.05
+LOCK_DAYS = 7
+
+
 async def _close_position(uid: str, position: dict, price: float, reason="manual"):
     entry = position["entry_price"]
     size = position["size"]
     side = position["side"]
     pnl = (price - entry) * size * (1 if side == "BUY" else -1)
-    proceeds = position["usd_amount"] + pnl
+    commission = round(max(0.0, pnl) * OWNER_RATE, 4)
+    proceeds = position["usd_amount"] + pnl - commission
     await db.positions.update_one({"_id": ObjectId(position["id"])},
                                   {"$set": {"status": "closed", "exit_price": price,
-                                            "pnl": round(pnl, 4), "closed_at": _now(),
-                                            "close_reason": reason}})
+                                            "pnl": round(pnl, 4), "owner_commission": commission,
+                                            "closed_at": _now(), "close_reason": reason}})
     await db.users.update_one({"_id": ObjectId(uid)}, {"$inc": {"demo_balance": proceeds}})
+    if commission > 0:
+        await db.owner_commissions.insert_one({
+            "user_id": uid, "amount": commission, "symbol": position["symbol"],
+            "kind": "trade_profit", "created_at": _now()})
     return round(pnl, 2)
 
 
@@ -140,7 +154,11 @@ async def manual_trade(data: ManualTradeInput, user: dict = Depends(get_current_
 @trading_router.post("/positions/{position_id}/close")
 async def close_one(position_id: str, user: dict = Depends(get_current_user)):
     uid = user["id"]
-    doc = await db.positions.find_one({"_id": ObjectId(position_id), "user_id": uid, "status": "open"})
+    try:
+        oid = ObjectId(position_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Position not found")
+    doc = await db.positions.find_one({"_id": oid, "user_id": uid, "status": "open"})
     if not doc:
         raise HTTPException(status_code=404, detail="Position not found")
     doc["id"] = str(doc["_id"])
@@ -252,8 +270,37 @@ async def update_settings(data: SettingsInput, user: dict = Depends(get_current_
 async def reset_demo(user: dict = Depends(get_current_user)):
     uid = user["id"]
     await db.positions.delete_many({"user_id": uid})
-    await db.users.update_one({"_id": ObjectId(uid)}, {"$set": {"demo_balance": 100.0}})
+    await db.users.update_one({"_id": ObjectId(uid)},
+                              {"$set": {"demo_balance": 100.0, "last_deposit_at": _now()}})
     return {"ok": True, "demo_balance": 100.0}
+
+
+@trading_router.post("/wallet/withdraw")
+async def withdraw(data: WithdrawInput, user: dict = Depends(get_current_user)):
+    uid = user["id"]
+    fresh = await _get_user(uid)
+    bal = fresh.get("demo_balance", 0.0)
+    amt = data.amount
+    if amt <= 0 or amt > bal:
+        raise HTTPException(status_code=400, detail="Invalid withdrawal amount")
+    dep = fresh.get("last_deposit_at") or fresh.get("created_at")
+    early = False
+    fee = 0.0
+    if dep:
+        try:
+            if datetime.now(timezone.utc) - datetime.fromisoformat(dep) < timedelta(days=LOCK_DAYS):
+                early = True
+                fee = round(amt * EARLY_WITHDRAWAL_FEE, 2)
+        except Exception:
+            pass
+    net = round(amt - fee, 2)
+    await db.users.update_one({"_id": ObjectId(uid)}, {"$inc": {"demo_balance": -amt}})
+    if fee > 0:
+        await db.owner_commissions.insert_one({
+            "user_id": uid, "amount": fee, "symbol": "EARLY_WITHDRAWAL",
+            "kind": "early_withdrawal_fee", "created_at": _now()})
+    return {"ok": True, "withdrawn": amt, "fee": fee, "net": net, "early": early,
+            "message": f"Early-withdrawal fee of 5% (${fee}) applied." if early else "No fee (held 7+ days)."}
 
 
 @trading_router.get("/backtest")

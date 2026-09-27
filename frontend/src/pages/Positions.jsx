@@ -9,6 +9,7 @@ import { PageTitle, Panel, Stat, fmt, pnlColor } from "@/components/common";
 export default function Positions() {
   const { t } = useI18n();
   const qc = useQueryClient();
+  const [wAmount, setWAmount] = React.useState(20);
   const portfolio = useQuery({
     queryKey: ["portfolio"],
     queryFn: () => api.get("/trading/portfolio").then((r) => r.data),
@@ -42,6 +43,16 @@ export default function Positions() {
     }
   };
 
+  const withdraw = async () => {
+    try {
+      const { data } = await api.post("/trading/wallet/withdraw", { amount: Number(wAmount) });
+      toast.success(data.message + ` Net $${data.net}`);
+      qc.invalidateQueries({ queryKey: ["portfolio"] });
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err.response?.data?.detail));
+    }
+  };
+
   const r = reports.data;
   const positions = portfolio.data?.positions || [];
 
@@ -54,6 +65,23 @@ export default function Positions() {
         <Stat label={t("total_pnl")} value={`${(r?.total_pnl ?? 0) >= 0 ? "+" : ""}$${fmt(r?.total_pnl ?? 0)}`} accent={pnlColor(r?.total_pnl ?? 0)} />
         <Stat label="W / L" value={`${r?.wins ?? 0} / ${r?.losses ?? 0}`} />
       </div>
+
+      <Panel className="mb-6" testid="wallet-withdraw"
+        title="Withdraw (Demo Wallet)">
+        <p className="text-xs text-muted-foreground mb-3">Withdrawing before 7 days from your last deposit applies a 5% early-withdrawal fee (owner share).</p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="text-xs text-muted-foreground">Amount (USD)</label>
+            <input type="number" min={1} value={wAmount} onChange={(e) => setWAmount(e.target.value)}
+              data-testid="withdraw-amount-input"
+              className="w-40 mt-1 px-3 py-2 rounded-lg bg-input border border-border focus:border-primary outline-none mono" />
+          </div>
+          <button onClick={withdraw} data-testid="withdraw-button"
+            className="px-5 py-2 rounded-lg font-semibold border border-gold/40 text-gold hover:bg-gold/10">
+            Withdraw
+          </button>
+        </div>
+      </Panel>
 
       <Panel title={`${t("nav_positions")} · Open`} className="mb-6"
         right={<button onClick={resetDemo} data-testid="reset-demo-button" className="text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border hover:border-primary hover:text-primary"><RotateCcw size={13} />{t("reset_demo")}</button>}

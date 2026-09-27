@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, CandlestickChart, Radar, Bot, Hand, ScanSearch,
   FlaskConical, Wallet, Gem, Sparkles, Settings as SettingsIcon,
-  BookOpen, LogOut, Menu, X, Globe,
+  BookOpen, LogOut, Menu, X, Globe, Crown,
 } from "lucide-react";
 import { Logo } from "./Logo";
 import { useI18n, LANGUAGES } from "@/i18n";
@@ -59,6 +59,23 @@ export default function Layout() {
           <span>{t(item.key)}</span>
         </NavLink>
       ))}
+      {user?.role === "admin" && (
+        <NavLink
+          to="/owner"
+          onClick={() => setOpen(false)}
+          data-testid="nav-owner"
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
+              isActive
+                ? "bg-gold/15 text-gold border border-gold/30"
+                : "text-gold/80 hover:text-gold hover:bg-gold/10"
+            }`
+          }
+        >
+          <Crown size={18} />
+          <span>Owner Console</span>
+        </NavLink>
+      )}
     </nav>
   );
 

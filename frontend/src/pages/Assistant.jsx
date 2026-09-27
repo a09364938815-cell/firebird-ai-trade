@@ -87,6 +87,14 @@ export default function Assistant() {
         </Panel>
 
         <Panel title={<span className="flex items-center gap-2"><Target size={18} className="text-primary" /> {t("score_coin")}</span>} testid="ai-score">
+          <label className="text-xs text-muted-foreground">Any coin symbol</label>
+          <input
+            value={symbol}
+            onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+            placeholder="e.g. BTC, PEPE, TAO..."
+            data-testid="score-custom-input"
+            className="w-full mt-1 mb-3 px-3 py-2 rounded-lg bg-input border border-border focus:border-primary outline-none mono uppercase"
+          />
           <div className="flex flex-wrap gap-1.5 mb-3">
             {SYMBOLS.map((s) => (
               <button key={s} onClick={() => setSymbol(s)} data-testid={`score-symbol-${s}`}

@@ -50,9 +50,9 @@ def create_refresh_token(user_id: str) -> str:
 
 def set_auth_cookies(response: Response, access: str, refresh: str):
     response.set_cookie("access_token", access, httponly=True, secure=True,
-                        samesite="none", max_age=ACCESS_MIN * 60, path="/")
+                        samesite="lax", max_age=ACCESS_MIN * 60, path="/")
     response.set_cookie("refresh_token", refresh, httponly=True, secure=True,
-                        samesite="none", max_age=REFRESH_DAYS * 86400, path="/")
+                        samesite="lax", max_age=REFRESH_DAYS * 86400, path="/")
 
 
 def _clean_user(user: dict) -> dict:
@@ -118,6 +118,7 @@ async def _new_user_doc(email: str, password: str, name: str, role: str = "user"
         "role": role,
         "settings": dict(DEFAULT_SETTINGS),
         "demo_balance": 100.0,
+        "last_deposit_at": datetime.now(timezone.utc).isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -208,7 +209,7 @@ async def refresh(request: Request, response: Response):
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
         response.set_cookie("access_token", create_access_token(uid, user["email"]),
-                            httponly=True, secure=True, samesite="none",
+                            httponly=True, secure=True, samesite="lax",
                             max_age=ACCESS_MIN * 60, path="/")
         return {"ok": True}
     except jwt.InvalidTokenError:
