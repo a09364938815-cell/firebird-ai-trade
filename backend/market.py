@@ -174,6 +174,7 @@ def compute_signal(candles: List[list]):
         reasons.append(f"Negative momentum {momentum:.1f}%")
 
     score = max(1, min(99, score))
+    action = "HOLD"
     if score >= 62:
         action = "BUY"
     elif score <= 40:

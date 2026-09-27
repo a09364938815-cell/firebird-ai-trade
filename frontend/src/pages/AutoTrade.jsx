@@ -49,7 +49,9 @@ export default function AutoTrade() {
         ];
         if (events.length) setLog((l) => [...events.map((e) => ({ e, t: new Date().toLocaleTimeString() })), ...l].slice(0, 20));
         qc.invalidateQueries({ queryKey: ["portfolio"] });
-      } catch {}
+      } catch (e) {
+        console.error("auto-tick failed", e);
+      }
     };
     tick();
     const id = setInterval(tick, 12000);
@@ -93,7 +95,7 @@ export default function AutoTrade() {
           ) : (
             <div className="space-y-2 max-h-72 overflow-y-auto">
               {log.map((l, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm">
+                <div key={`${l.t}-${i}`} className="flex items-center gap-2 text-sm">
                   <Zap size={14} className="text-gold" />
                   <span className="mono text-xs text-muted-foreground">{l.t}</span>
                   <span>{l.e}</span>

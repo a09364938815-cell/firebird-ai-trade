@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 export const LANGUAGES = [
   { code: "en", label: "English", dir: "ltr" },
@@ -200,15 +200,17 @@ export function I18nProvider({ children }) {
     document.documentElement.classList.toggle("font-fa", lang === "fa");
   }, [lang]);
 
-  const t = (key) => {
-    const dict = TRANSLATIONS[lang] || TRANSLATIONS.en;
-    return dict[key] || TRANSLATIONS.en[key] || key;
-  };
-
-  const dir = (LANGUAGES.find((l) => l.code === lang) || LANGUAGES[0]).dir;
+  const value = useMemo(() => {
+    const t = (key) => {
+      const dict = TRANSLATIONS[lang] || TRANSLATIONS.en;
+      return dict[key] || TRANSLATIONS.en[key] || key;
+    };
+    const dir = (LANGUAGES.find((l) => l.code === lang) || LANGUAGES[0]).dir;
+    return { lang, setLang, t, dir };
+  }, [lang]);
 
   return (
-    <I18nContext.Provider value={{ lang, setLang, t, dir }}>
+    <I18nContext.Provider value={value}>
       {children}
     </I18nContext.Provider>
   );

@@ -110,7 +110,7 @@ export default function Dashboard() {
         <Panel title={t("market_pulse")} testid="dashboard-news">
           <div className="space-y-3">
             {(news.data || []).slice(0, 5).map((n, i) => (
-              <div key={i} className="flex gap-2">
+              <div key={`${n.symbol}-${i}`} className="flex gap-2">
                 <Newspaper size={15} className={n.sentiment === "positive" ? "text-success mt-0.5" : "text-danger mt-0.5"} />
                 <div className="text-sm">{n.title}</div>
               </div>

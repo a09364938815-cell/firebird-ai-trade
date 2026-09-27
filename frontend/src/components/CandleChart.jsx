@@ -49,7 +49,7 @@ export default function CandleChart({ candles = [], height = 340 }) {
         const bodyH = Math.max(1, bodyBottom - bodyTop);
         const bw = Math.max(1.5, cw * 0.6);
         return (
-          <g key={i}>
+          <g key={c[0]}>
             <line x1={x} x2={x} y1={y(high)} y2={y(low)} stroke={color} strokeWidth="1" />
             <rect x={x - bw / 2} y={bodyTop} width={bw} height={bodyH} fill={color} rx="0.5" />
           </g>
