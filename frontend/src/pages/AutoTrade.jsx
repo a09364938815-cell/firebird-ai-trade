@@ -11,6 +11,7 @@ export default function AutoTrade() {
   const qc = useQueryClient();
   const [on, setOn] = useState(false);
   const [log, setLog] = useState([]);
+  const [halt, setHalt] = useState(null);
 
   const settings = useQuery({
     queryKey: ["settings"],
@@ -43,8 +44,13 @@ export default function AutoTrade() {
     const tick = async () => {
       try {
         const { data } = await api.post("/trading/auto/tick");
+        if (data.halt) {
+          setHalt(data.halt_reason);
+          setOn(false);
+          toast.error(data.halt_reason);
+        }
         const events = [
-          ...(data.opened || []).map((o) => `BUY ${o.symbol} (score ${o.score})`),
+          ...(data.opened || []).map((o) => `BUY ${o.symbol} ${o.timeframe} · score ${o.score} · ${o.leverage}x`),
           ...(data.closed || []).map((c) => `${c.reason} ${c.symbol} · $${c.pnl}`),
         ];
         if (events.length) setLog((l) => [...events.map((e) => ({ e, t: new Date().toLocaleTimeString() })), ...l].slice(0, 20));
@@ -60,9 +66,39 @@ export default function AutoTrade() {
 
   const p = portfolio.data;
 
+  const resume = async () => {
+    try {
+      await api.post("/trading/auto/resume");
+      setHalt(null);
+      toast.success("Bot re-authorized. You can enable auto-trade again.");
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   return (
     <div>
       <PageTitle title={t("nav_autotrade")} subtitle={t("disclaimer")} />
+
+      <div className="glass rounded-xl p-4 mb-6 border border-primary/20 text-xs text-muted-foreground flex flex-wrap gap-x-6 gap-y-1" data-testid="rules-badges">
+        <span>⚖️ Reward:Risk <b className="text-gold">2:1</b> (stop required)</span>
+        <span>🤖 Max <b className="text-gold">2</b> concurrent auto-trades</span>
+        <span>⚡ Auto leverage ≤ <b className="text-gold">10x</b> · Manual ≤ 50x</span>
+        <span>🛑 Circuit-breaker at <b className="text-danger">20%</b> drawdown</span>
+        <span>✋ Halt after <b className="text-danger">5</b> losses</span>
+        <span>📈 Scans all coins & timeframes</span>
+      </div>
+
+      {halt && (
+        <div className="glass rounded-xl p-4 mb-6 border border-destructive/40 flex flex-wrap items-center justify-between gap-3" data-testid="halt-banner">
+          <div className="text-sm text-danger">🛑 {halt}</div>
+          <button onClick={resume} data-testid="resume-button"
+            className="px-4 py-2 rounded-lg font-semibold border border-gold/40 text-gold hover:bg-gold/10">
+            Re-authorize Bot
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Stat label={t("total_value")} value={`$${fmt(p?.total_value ?? 100)}`} accent="fire-text" />
         <Stat label={t("cash")} value={`$${fmt(p?.cash ?? 100)}`} />

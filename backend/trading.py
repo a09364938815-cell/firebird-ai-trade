@@ -16,6 +16,7 @@ class ManualTradeInput(BaseModel):
     symbol: str
     side: str  # BUY or SELL
     usd_amount: float
+    leverage: float = 1.0
 
 
 class SettingsInput(BaseModel):
@@ -27,6 +28,11 @@ class SettingsInput(BaseModel):
     stop_loss_pct: float | None = None
     auto_trade: bool | None = None
     language: str | None = None
+    auto_leverage: float | None = None
+    manual_max_leverage: float | None = None
+    max_concurrent_auto: int | None = None
+    drawdown_halt_pct: float | None = None
+    max_consecutive_losses: int | None = None
 
 
 class WithdrawInput(BaseModel):
@@ -78,7 +84,7 @@ async def portfolio(user: dict = Depends(get_current_user)):
             "positions": enriched}
 
 
-async def _open_position(uid: str, symbol: str, side: str, usd: float, tickers, settings, source="manual"):
+async def _open_position(uid: str, symbol: str, side: str, usd: float, tickers, settings, source="manual", leverage=1.0):
     user = await _get_user(uid)
     balance = user.get("demo_balance", 100.0)
     if usd <= 0:
@@ -92,11 +98,17 @@ async def _open_position(uid: str, symbol: str, side: str, usd: float, tickers, 
     price = tickers.get(symbol, {}).get("price")
     if not price:
         raise HTTPException(status_code=400, detail="No price for symbol")
-    size = usd / price
+    leverage = max(1.0, float(leverage))
+    notional = usd * leverage
+    size = notional / price
+    sl = settings.get("stop_loss_pct", 4.0)
+    tp = settings.get("take_profit_pct", 8.0)
+    if source == "auto":
+        tp = round(sl * 2, 2)  # non-negotiable 2:1 reward:risk
     doc = {"user_id": uid, "symbol": symbol, "side": side, "size": size,
-           "entry_price": price, "usd_amount": usd, "status": "open", "source": source,
-           "take_profit_pct": settings.get("take_profit_pct", 8.0),
-           "stop_loss_pct": settings.get("stop_loss_pct", 4.0),
+           "entry_price": price, "usd_amount": usd, "leverage": leverage, "notional": notional,
+           "status": "open", "source": source,
+           "take_profit_pct": tp, "stop_loss_pct": sl,
            "trailing_stop_pct": settings.get("trailing_stop_pct", 3.0),
            "peak_price": price, "opened_at": _now()}
     res = await db.positions.insert_one(doc)
@@ -115,14 +127,20 @@ async def _close_position(uid: str, position: dict, price: float, reason="manual
     entry = position["entry_price"]
     size = position["size"]
     side = position["side"]
-    pnl = (price - entry) * size * (1 if side == "BUY" else -1)
+    margin = position["usd_amount"]
+    pnl_raw = (price - entry) * size * (1 if side == "BUY" else -1)
+    pnl = max(pnl_raw, -margin)  # liquidation floor: can't lose more than margin
     commission = round(max(0.0, pnl) * OWNER_RATE, 4)
-    proceeds = position["usd_amount"] + pnl - commission
+    proceeds = margin + pnl - commission
     await db.positions.update_one({"_id": ObjectId(position["id"])},
                                   {"$set": {"status": "closed", "exit_price": price,
                                             "pnl": round(pnl, 4), "owner_commission": commission,
                                             "closed_at": _now(), "close_reason": reason}})
     await db.users.update_one({"_id": ObjectId(uid)}, {"$inc": {"demo_balance": proceeds}})
+    if pnl > 0:
+        await db.users.update_one({"_id": ObjectId(uid)}, {"$set": {"consecutive_losses": 0}})
+    else:
+        await db.users.update_one({"_id": ObjectId(uid)}, {"$inc": {"consecutive_losses": 1}})
     if commission > 0:
         await db.owner_commissions.insert_one({
             "user_id": uid, "amount": commission, "symbol": position["symbol"],
@@ -137,8 +155,10 @@ async def manual_trade(data: ManualTradeInput, user: dict = Depends(get_current_
     settings = user.get("settings", {})
     tickers = await get_tickers()
     if data.side.upper() == "BUY":
-        pos = await _open_position(uid, symbol, "BUY", data.usd_amount, tickers, settings, "manual")
-        return {"ok": True, "position": pos}
+        lev = min(float(data.leverage or 1.0), float(settings.get("manual_max_leverage", 50.0)))
+        pos = await _open_position(uid, symbol, "BUY", data.usd_amount, tickers, settings, "manual", lev)
+        warning = "High leverage increases liquidation risk — you can lose your full margin." if lev >= 10 else None
+        return {"ok": True, "position": pos, "leverage": lev, "warning": warning}
     # SELL closes matching open BUY positions
     positions = await _open_positions(uid)
     matching = [p for p in positions if p["symbol"] == symbol and p["side"] == "BUY"]
@@ -175,6 +195,13 @@ async def _apply_risk_management(uid: str, tickers):
     for p in positions:
         price = tickers.get(p["symbol"], {}).get("price", p["entry_price"])
         entry = p["entry_price"]
+        side = p["side"]
+        margin = p.get("usd_amount", 0)
+        unreal = (price - entry) * p["size"] * (1 if side == "BUY" else -1)
+        if margin and unreal <= -margin:  # liquidation: margin wiped out
+            pnl = await _close_position(uid, p, price, "liquidation")
+            events.append({"symbol": p["symbol"], "reason": "liquidation", "pnl": pnl})
+            continue
         peak = max(p.get("peak_price", entry), price)
         if peak != p.get("peak_price"):
             await db.positions.update_one({"_id": ObjectId(p["id"])}, {"$set": {"peak_price": peak}})
@@ -192,35 +219,90 @@ async def _apply_risk_management(uid: str, tickers):
     return events
 
 
+AUTO_TIMEFRAMES = ["15m", "1h", "4h"]
+
+
 @trading_router.post("/auto/tick")
 async def auto_tick(user: dict = Depends(get_current_user)):
-    """One evaluation cycle of the auto-trader (demo only)."""
+    """One evaluation cycle of the rules-based auto-trader (demo only)."""
     uid = user["id"]
     settings = user.get("settings", {})
     tickers = await get_tickers()
     events = await _apply_risk_management(uid, tickers)
+
+    fresh = await _get_user(uid)
+    balance, holdings, positions, _ = await _portfolio_value(uid)
+    equity = balance + holdings
+    peak = max(fresh.get("peak_equity", equity), equity)
+    dd = (peak - equity) / peak * 100 if peak > 0 else 0
+    dd_limit = settings.get("drawdown_halt_pct", 20.0)
+    max_losses = settings.get("max_consecutive_losses", 5)
+    cl = fresh.get("consecutive_losses", 0)
+    updates = {"peak_equity": peak}
+    halt = fresh.get("risk_halt", False)
+    reason = fresh.get("halt_reason")
+
+    if not halt and dd >= dd_limit:
+        for p in await _open_positions(uid):
+            pr = tickers.get(p["symbol"], {}).get("price", p["entry_price"])
+            await _close_position(uid, p, pr, "drawdown_halt")
+        halt = True
+        reason = f"Drawdown {dd:.0f}% reached the {dd_limit:.0f}% circuit-breaker — all positions closed."
+    elif not halt and cl >= max_losses:
+        halt = True
+        reason = f"{cl} consecutive losses — auto-trade paused until you re-authorize."
+
+    if halt:
+        s = dict(settings)
+        s["auto_trade"] = False
+        updates.update({"risk_halt": True, "halt_reason": reason, "settings": s})
+        await db.users.update_one({"_id": ObjectId(uid)}, {"$set": updates})
+        return {"closed": events, "opened": [], "halt": True, "halt_reason": reason,
+                "equity": round(equity, 2), "drawdown_pct": round(dd, 1)}
+
     opened = []
     if settings.get("auto_trade"):
-        fresh = await _get_user(uid)
-        balance = fresh.get("demo_balance", 0)
-        open_pos = await _open_positions(uid)
-        held = {p["symbol"] for p in open_pos}
-        if len(open_pos) < 4 and balance > 5:
-            # find best BUY signal on 1h not already held
-            best = None
+        held = {p["symbol"] for p in positions}
+        max_conc = int(settings.get("max_concurrent_auto", 2))
+        if len(positions) < max_conc and balance > 5:
+            best = None  # (symbol, timeframe, sig)
             for c in COINS:
                 if c["symbol"] in held:
                     continue
-                data = await get_klines(c["symbol"], "1h", 80)
-                sig = compute_signal(data["candles"])
-                if sig["action"] == "BUY" and (best is None or sig["score"] > best[1]["score"]):
-                    best = (c["symbol"], sig)
+                for tf in AUTO_TIMEFRAMES:
+                    d = await get_klines(c["symbol"], tf, 80)
+                    sig = compute_signal(d["candles"])
+                    if sig["action"] == "BUY" and sig["score"] >= 62:
+                        if best is None or sig["score"] > best[2]["score"]:
+                            best = (c["symbol"], tf, sig)
             if best:
+                lev = min(float(settings.get("auto_leverage", 10.0)), 10.0)
                 usd = min(balance * settings.get("max_position_pct", 25.0) / 100, balance)
                 if usd > 1:
-                    pos = await _open_position(uid, best[0], "BUY", round(usd, 2), tickers, settings, "auto")
-                    opened.append({"symbol": best[0], "score": best[1]["score"]})
-    return {"closed": events, "opened": opened}
+                    await _open_position(uid, best[0], "BUY", round(usd, 2), tickers, settings, "auto", lev)
+                    opened.append({"symbol": best[0], "timeframe": best[1],
+                                   "score": best[2]["score"], "leverage": lev})
+    await db.users.update_one({"_id": ObjectId(uid)}, {"$set": updates})
+    return {"closed": events, "opened": opened, "halt": False,
+            "equity": round(equity, 2), "drawdown_pct": round(dd, 1), "consecutive_losses": cl}
+
+
+@trading_router.get("/auto/status")
+async def auto_status(user: dict = Depends(get_current_user)):
+    fresh = await _get_user(user["id"])
+    return {"risk_halt": fresh.get("risk_halt", False),
+            "halt_reason": fresh.get("halt_reason"),
+            "consecutive_losses": fresh.get("consecutive_losses", 0),
+            "peak_equity": round(fresh.get("peak_equity", 0), 2)}
+
+
+@trading_router.post("/auto/resume")
+async def auto_resume(user: dict = Depends(get_current_user)):
+    """User re-authorizes the bot after a risk halt."""
+    await db.users.update_one({"_id": ObjectId(user["id"])},
+                              {"$set": {"risk_halt": False, "halt_reason": None,
+                                        "consecutive_losses": 0}})
+    return {"ok": True}
 
 
 @trading_router.get("/reports")
@@ -316,27 +398,45 @@ async def backtest(symbol: str = "BTC", interval: str = "1h", user: dict = Depen
     all_wins = 0
     all_trades = 0
     all_return = 0.0
+    slp = 3.0  # stop-loss %, target = 2x (non-negotiable 2:1 reward:risk)
     for w, start in enumerate(starts):
         seg = candles[start:start + win_size]
         if len(seg) < 25:
             continue
-        closes = [c[4] for c in seg]
         position = None
+        entry = stop = target = 0.0
         wins = 0
         trades = 0
         ret = 0.0
         for i in range(22, len(seg)):
             sig = compute_signal(seg[:i + 1])
-            price = closes[i]
-            if position is None and sig["action"] == "BUY":
-                position = price
-            elif position is not None and (sig["action"] == "SELL" or (price - position) / position * 100 >= 8):
-                pnl_pct = (price - position) / position * 100
-                ret += pnl_pct
-                trades += 1
-                if pnl_pct > 0:
+            close = seg[i][4]
+            high = seg[i][2]
+            low = seg[i][3]
+            if position is None:
+                # only enter strong, trend-aligned BUY signals
+                if sig["action"] == "BUY" and sig["score"] >= 64 and sig["sma_fast"] > sig["sma_slow"]:
+                    entry = close
+                    stop = entry * (1 - slp / 100)
+                    target = entry * (1 + 2 * slp / 100)
+                    position = entry
+            else:
+                if low <= stop:
+                    ret += -slp
+                    trades += 1
+                    position = None
+                elif high >= target:
+                    ret += 2 * slp
                     wins += 1
-                position = None
+                    trades += 1
+                    position = None
+                elif sig["action"] == "SELL":
+                    pnl_pct = (close - position) / position * 100
+                    ret += pnl_pct
+                    trades += 1
+                    if pnl_pct > 0:
+                        wins += 1
+                    position = None
         all_wins += wins
         all_trades += trades
         all_return += ret

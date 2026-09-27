@@ -107,6 +107,11 @@ DEFAULT_SETTINGS = {
     "take_profit_pct": 8.0,
     "stop_loss_pct": 4.0,
     "auto_trade": False,
+    "auto_leverage": 10.0,
+    "manual_max_leverage": 50.0,
+    "max_concurrent_auto": 2,
+    "drawdown_halt_pct": 20.0,
+    "max_consecutive_losses": 5,
 }
 
 
