@@ -12,6 +12,7 @@ export default function ManualTrade() {
   const qc = useQueryClient();
   const [symbol, setSymbol] = useState("BTC");
   const [amount, setAmount] = useState(25);
+  const [leverage, setLeverage] = useState(1);
   const [busy, setBusy] = useState(false);
 
   const portfolio = useQuery({
@@ -25,8 +26,9 @@ export default function ManualTrade() {
   const trade = async (side) => {
     setBusy(true);
     try {
-      const { data } = await api.post("/trading/manual", { symbol, side, usd_amount: Number(amount) });
-      toast.success(side === "BUY" ? `Opened ${symbol} position` : `Closed ${symbol} · PnL $${data.pnl ?? 0}`);
+      const { data } = await api.post("/trading/manual", { symbol, side, usd_amount: Number(amount), leverage: Number(leverage) });
+      if (data.warning) toast.warning(data.warning);
+      toast.success(side === "BUY" ? `Opened ${symbol} ${data.leverage || leverage}x position` : `Closed ${symbol} · PnL $${data.pnl ?? 0}`);
       qc.invalidateQueries({ queryKey: ["portfolio"] });
       qc.invalidateQueries({ queryKey: ["me"] });
     } catch (err) {
@@ -66,8 +68,20 @@ export default function ManualTrade() {
           <label className="text-xs text-muted-foreground">{t("amount_usd")}</label>
           <input type="number" value={amount} min={1} onChange={(e) => setAmount(e.target.value)}
             data-testid="manual-amount-input"
-            className="w-full mt-1 mb-4 px-4 py-2.5 rounded-lg bg-input border border-border focus:border-primary outline-none mono" />
-          <div className="grid grid-cols-2 gap-3">
+            className="w-full mt-1 mb-3 px-4 py-2.5 rounded-lg bg-input border border-border focus:border-primary outline-none mono" />
+          <label className="text-xs text-muted-foreground flex items-center justify-between">
+            <span>Leverage</span>
+            <span className={`mono ${leverage >= 10 ? "text-danger" : "text-gold"}`}>{leverage}x</span>
+          </label>
+          <input type="range" min={1} max={50} step={1} value={leverage} onChange={(e) => setLeverage(Number(e.target.value))}
+            data-testid="manual-leverage-input"
+            className="w-full mt-1 mb-1 accent-orange-500" />
+          {leverage >= 10 && (
+            <div className="text-[11px] text-danger mb-3" data-testid="leverage-warning">
+              ⚠️ High leverage — you can lose your full margin (liquidation).
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3 mt-3">
             <button disabled={busy} onClick={() => trade("BUY")} data-testid="manual-buy-button"
               className="py-2.5 rounded-lg font-semibold bg-success/20 text-success border border-success/40 hover:bg-success/30 disabled:opacity-50">
               {t("buy")}
