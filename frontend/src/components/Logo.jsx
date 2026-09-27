@@ -1,17 +1,34 @@
-import React from "react";
+import React, { useState } from "react";
 
-export const FIREBIRD_LOGO =
-  "https://static.prod-images.emergentagent.com/jobs/2857b787-092b-48b2-8f7f-f9178af03cef/images/0ee7d285bbcb5dd7991a4a433ae046eb1cfd40512c562a661a58c5ba67415080.jpeg";
+// Original Firebird / Simorgh dual logo (preserved from the legacy app),
+// served locally from /public/logos so it ships inside the build.
+export const LOGO_A = "/logos/firebird-logo-a.png";
+export const LOGO_B = "/logos/firebird-logo-b.png";
+export const FIREBIRD_LOGO = LOGO_A;
 
 export function Logo({ size = 40, withText = true }) {
+  const [which, setWhich] = useState(() => localStorage.getItem("fb_logo") || "a");
+  const src = which === "b" ? LOGO_B : LOGO_A;
+
+  const toggle = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const next = which === "a" ? "b" : "a";
+    setWhich(next);
+    localStorage.setItem("fb_logo", next);
+  };
+
   return (
     <div className="flex items-center gap-3" data-testid="firebird-logo">
       <img
-        src={FIREBIRD_LOGO}
-        alt="Firebird"
+        src={src}
+        alt="Firebird / Simorgh Trade"
         width={size}
         height={size}
-        className="rounded-lg ember-pulse"
+        onClick={toggle}
+        title="Tap to switch logo"
+        data-testid="logo-toggle"
+        className="rounded-lg ember-pulse cursor-pointer select-none"
         style={{ objectFit: "contain" }}
       />
       {withText && (
