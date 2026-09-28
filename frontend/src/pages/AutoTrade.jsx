@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Bot, Zap } from "lucide-react";
+import { Bot, Zap, ShieldCheck, ShieldAlert, TrendingDown } from "lucide-react";
 import api, { formatApiErrorDetail } from "@/lib/api";
 import { useI18n } from "@/i18n";
 import { PageTitle, Panel, Stat, fmt, pnlColor } from "@/components/common";
@@ -22,6 +22,14 @@ export default function AutoTrade() {
     queryFn: () => api.get("/trading/portfolio").then((r) => r.data),
     refetchInterval: 10000,
   });
+  const status = useQuery({
+    queryKey: ["auto-status"],
+    queryFn: () => api.get("/trading/auto/status").then((r) => r.data),
+    refetchInterval: 8000,
+  });
+  const st = status.data;
+  const lim = st?.limits || {};
+  const haltReason = halt || (st?.risk_halt ? st?.halt_reason : null);
 
   useEffect(() => {
     if (settings.data) setOn(!!settings.data.settings?.auto_trade);
@@ -55,6 +63,7 @@ export default function AutoTrade() {
         ];
         if (events.length) setLog((l) => [...events.map((e) => ({ e, t: new Date().toLocaleTimeString() })), ...l].slice(0, 20));
         qc.invalidateQueries({ queryKey: ["portfolio"] });
+        qc.invalidateQueries({ queryKey: ["auto-status"] });
       } catch (e) {
         console.error("auto-tick failed", e);
       }
@@ -70,7 +79,8 @@ export default function AutoTrade() {
     try {
       await api.post("/trading/auto/resume");
       setHalt(null);
-      toast.success("Bot re-authorized. You can enable auto-trade again.");
+      qc.invalidateQueries({ queryKey: ["auto-status"] });
+      toast.success(t("bot_reauthorized"));
     } catch (e) {
       console.error(e);
     }
@@ -89,9 +99,40 @@ export default function AutoTrade() {
         <span>📈 {t("rule_scan")}</span>
       </div>
 
-      {halt && (
+      {/* Rule 3-8: live risk status indicator */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6" data-testid="risk-status-indicator">
+        <div className={`glass rounded-xl p-4 flex items-center gap-3 border ${st?.risk_halt ? "border-destructive/40" : "border-success/30"}`} data-testid="risk-mode-card">
+          {st?.risk_halt ? <ShieldAlert size={22} className="text-danger" /> : <ShieldCheck size={22} className="text-success" />}
+          <div>
+            <div className="text-xs text-muted-foreground">{t("risk_status")}</div>
+            <div className={`font-head font-bold ${st?.risk_halt ? "text-danger" : "text-success"}`} data-testid="risk-mode-value">
+              {st?.risk_halt ? t("risk_mode_halted") : t("risk_mode_active")}
+            </div>
+          </div>
+        </div>
+        <div className="glass rounded-xl p-4 flex items-center gap-3 border border-border" data-testid="consecutive-losses-card">
+          <TrendingDown size={22} className={`${(st?.consecutive_losses ?? 0) >= (lim.max_consecutive_losses ?? 5) - 1 ? "text-danger" : "text-gold"}`} />
+          <div>
+            <div className="text-xs text-muted-foreground">{t("consecutive_losses_label")}</div>
+            <div className="font-head font-bold mono" data-testid="consecutive-losses-value">
+              {st?.consecutive_losses ?? 0} / {lim.max_consecutive_losses ?? 5}
+            </div>
+          </div>
+        </div>
+        <div className="glass rounded-xl p-4 flex items-center gap-3 border border-border" data-testid="drawdown-card">
+          <TrendingDown size={22} className={`${(st?.drawdown_pct ?? 0) >= (lim.max_drawdown_pct ?? 20) * 0.75 ? "text-danger" : "text-gold"}`} />
+          <div>
+            <div className="text-xs text-muted-foreground">{t("drawdown_label")}</div>
+            <div className="font-head font-bold mono" data-testid="drawdown-value">
+              {fmt(st?.drawdown_pct ?? 0, 1)}% / {lim.max_drawdown_pct ?? 20}%
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {haltReason && (
         <div className="glass rounded-xl p-4 mb-6 border border-destructive/40 flex flex-wrap items-center justify-between gap-3" data-testid="halt-banner">
-          <div className="text-sm text-danger">🛑 {halt}</div>
+          <div className="text-sm text-danger">🛑 {haltReason}</div>
           <button onClick={resume} data-testid="resume-button"
             className="px-4 py-2 rounded-lg font-semibold border border-gold/40 text-gold hover:bg-gold/10">
             {t("reauthorize_bot")}

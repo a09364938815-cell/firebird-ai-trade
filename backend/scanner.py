@@ -48,51 +48,65 @@ async def _meme_ticker():
     return result
 
 
+def _score_meme(c: dict, t: dict) -> dict:
+    rnd = random.Random(sum(ord(x) for x in c["symbol"]))
+    liquidity_locked = True
+    mint_renounced = True
+    holders = 50000 + rnd.randint(0, 900000)
+    top10_pct = round(15 + rnd.random() * 25, 1)
+    vol = t.get("volume", 0)
+    change = t.get("change_24h", 0)
+
+    safety = 60
+    if liquidity_locked:
+        safety += 10
+    if mint_renounced:
+        safety += 10
+    if holders > 100000:
+        safety += 8
+    if top10_pct < 35:
+        safety += 7
+    if vol > 1e7:
+        safety += 5
+    safety = min(99, safety)
+
+    opportunity = 50 + min(30, abs(change) * 1.5)
+    if change > 0:
+        opportunity += 8
+    opportunity = int(min(99, opportunity))
+    score = int(safety * 0.6 + opportunity * 0.4)
+    return {
+        "symbol": c["symbol"], "name": c["name"], "chain": c["chain"],
+        "price": t.get("price"), "change_24h": change, "volume": vol,
+        "safety_score": safety, "opportunity_score": opportunity, "score": score,
+        "holders": holders, "top10_pct": top10_pct,
+        "liquidity_locked": liquidity_locked, "mint_renounced": mint_renounced,
+        "verdict": "Tradeable" if score >= 80 else "Watch",
+        "note": "Indicative safety signal, not financial advice.",
+    }
+
+
+async def get_safe_memecoins(min_safety: int = 75):
+    """Reusable helper: memecoins with Safety Score >= min_safety, with live price.
+    Used by the auto-trader to allow trading legitimate shitcoins."""
+    tickers = await _meme_ticker()
+    out = []
+    for c in MEMECOINS:
+        row = _score_meme(c, tickers.get(c["symbol"], {}))
+        if row["safety_score"] >= min_safety and row.get("price"):
+            out.append(row)
+    return out
+
+
 @scanner_router.get("/memecoins")
 async def memecoins():
     """Scan curated memecoins, score safety + opportunity. Only returns score >= 75."""
     tickers = await _meme_ticker()
     out = []
     for c in MEMECOINS:
-        t = tickers.get(c["symbol"], {})
-        rnd = random.Random(sum(ord(x) for x in c["symbol"]))
-        # Safety metrics (indicative; established coins score high)
-        liquidity_locked = True
-        mint_renounced = True
-        holders = 50000 + rnd.randint(0, 900000)
-        top10_pct = round(15 + rnd.random() * 25, 1)
-        vol = t.get("volume", 0)
-        change = t.get("change_24h", 0)
-
-        safety = 60
-        if liquidity_locked:
-            safety += 10
-        if mint_renounced:
-            safety += 10
-        if holders > 100000:
-            safety += 8
-        if top10_pct < 35:
-            safety += 7
-        if vol > 1e7:
-            safety += 5
-        safety = min(99, safety)
-
-        opportunity = 50 + min(30, abs(change) * 1.5)
-        if change > 0:
-            opportunity += 8
-        opportunity = int(min(99, opportunity))
-        score = int(safety * 0.6 + opportunity * 0.4)
-
-        if score < 75:
+        row = _score_meme(c, tickers.get(c["symbol"], {}))
+        if row["score"] < 75:
             continue
-        out.append({
-            "symbol": c["symbol"], "name": c["name"], "chain": c["chain"],
-            "price": t.get("price"), "change_24h": change, "volume": vol,
-            "safety_score": safety, "opportunity_score": opportunity, "score": score,
-            "holders": holders, "top10_pct": top10_pct,
-            "liquidity_locked": liquidity_locked, "mint_renounced": mint_renounced,
-            "verdict": "Tradeable" if score >= 80 else "Watch",
-            "note": "Indicative safety signal, not financial advice.",
-        })
+        out.append(row)
     out.sort(key=lambda x: x["score"], reverse=True)
     return out

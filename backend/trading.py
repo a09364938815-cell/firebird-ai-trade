@@ -1,4 +1,5 @@
 from datetime import datetime, timezone, timedelta
+import os
 
 import numpy as np
 from bson import ObjectId
@@ -8,8 +9,30 @@ from pydantic import BaseModel
 from db import db
 from auth import get_current_user
 from market import get_tickers, get_klines, compute_signal, COINS
+from scanner import get_safe_memecoins
 
 trading_router = APIRouter(prefix="/api/trading", tags=["trading"])
+
+# ---- Risk-management config (all values sourced from .env) ----
+AUTO_MAX_LEVERAGE = float(os.environ.get("AUTO_MAX_LEVERAGE", 10))
+AUTO_DEFAULT_LEVERAGE = float(os.environ.get("AUTO_DEFAULT_LEVERAGE", 2))
+MAX_CONCURRENT_TRADES = int(os.environ.get("MAX_CONCURRENT_TRADES", 2))
+MAX_DRAWDOWN_PCT = float(os.environ.get("MAX_DRAWDOWN_PCT", 20))
+MAX_CONSECUTIVE_LOSSES = int(os.environ.get("MAX_CONSECUTIVE_LOSSES", 5))
+MIN_STOP_LOSS_PCT = float(os.environ.get("MIN_STOP_LOSS_PCT", 2))
+MIN_SAFETY_SCORE = int(os.environ.get("MIN_SAFETY_SCORE", 75))
+AUTO_MIN_SCORE = float(os.environ.get("AUTO_MIN_SCORE", 62))
+AUTO_TIMEFRAMES = [tf.strip() for tf in os.environ.get("AUTO_TIMEFRAMES", "1m,5m,15m,1h,4h,1d").split(",") if tf.strip()]
+
+
+def _ai_leverage(score: float) -> float:
+    """Firebird Core decides leverage from signal conviction.
+    Starts at the default (2-3x) and scales up to the hard cap based on score.
+    Never exceeds AUTO_MAX_LEVERAGE."""
+    span = max(1.0, 100.0 - AUTO_MIN_SCORE)
+    conviction = max(0.0, min(1.0, (score - AUTO_MIN_SCORE) / span))
+    lev = AUTO_DEFAULT_LEVERAGE + conviction * (AUTO_MAX_LEVERAGE - AUTO_DEFAULT_LEVERAGE)
+    return round(min(AUTO_MAX_LEVERAGE, max(AUTO_DEFAULT_LEVERAGE, lev)), 1)
 
 
 class ManualTradeInput(BaseModel):
@@ -66,6 +89,21 @@ async def _portfolio_value(uid: str):
     return balance, holdings_value, positions, tickers
 
 
+async def _account_equity(uid: str, tickers):
+    """True account equity = cash + posted margin + unrealized PnL.
+    (Not cash + leveraged notional, which would overstate equity and break drawdown.)"""
+    user = await _get_user(uid)
+    balance = user.get("demo_balance", 100.0)
+    positions = await _open_positions(uid)
+    equity = balance
+    for p in positions:
+        price = tickers.get(p["symbol"], {}).get("price", p["entry_price"])
+        unreal = (price - p["entry_price"]) * p["size"] * (1 if p["side"] == "BUY" else -1)
+        unreal = max(unreal, -p.get("usd_amount", 0))  # capped at margin (liquidation floor)
+        equity += p.get("usd_amount", 0) + unreal
+    return balance, round(equity, 4), positions
+
+
 @trading_router.get("/portfolio")
 async def portfolio(user: dict = Depends(get_current_user)):
     uid = user["id"]
@@ -104,7 +142,13 @@ async def _open_position(uid: str, symbol: str, side: str, usd: float, tickers, 
     sl = settings.get("stop_loss_pct", 4.0)
     tp = settings.get("take_profit_pct", 8.0)
     if source == "auto":
-        tp = round(sl * 2, 2)  # non-negotiable 2:1 reward:risk
+        # Rule 1 & 2: mandatory SL/TP with a strict 2:1 reward:risk ratio.
+        if not sl or float(sl) <= 0:
+            sl = MIN_STOP_LOSS_PCT
+        sl = max(float(sl), MIN_STOP_LOSS_PCT)
+        tp = round(sl * 2, 2)
+        if sl <= 0 or tp <= 0:
+            raise HTTPException(status_code=400, detail="Bot requires both Stop Loss and Take Profit")
     doc = {"user_id": uid, "symbol": symbol, "side": side, "size": size,
            "entry_price": price, "usd_amount": usd, "leverage": leverage, "notional": notional,
            "status": "open", "source": source,
@@ -219,9 +263,6 @@ async def _apply_risk_management(uid: str, tickers):
     return events
 
 
-AUTO_TIMEFRAMES = ["15m", "1h", "4h"]
-
-
 @trading_router.post("/auto/tick")
 async def auto_tick(user: dict = Depends(get_current_user)):
     """One evaluation cycle of the rules-based auto-trader (demo only)."""
@@ -231,12 +272,11 @@ async def auto_tick(user: dict = Depends(get_current_user)):
     events = await _apply_risk_management(uid, tickers)
 
     fresh = await _get_user(uid)
-    balance, holdings, positions, _ = await _portfolio_value(uid)
-    equity = balance + holdings
+    balance, equity, positions = await _account_equity(uid, tickers)
     peak = max(fresh.get("peak_equity", equity), equity)
     dd = (peak - equity) / peak * 100 if peak > 0 else 0
-    dd_limit = settings.get("drawdown_halt_pct", 20.0)
-    max_losses = settings.get("max_consecutive_losses", 5)
+    dd_limit = MAX_DRAWDOWN_PCT
+    max_losses = MAX_CONSECUTIVE_LOSSES
     cl = fresh.get("consecutive_losses", 0)
     updates = {"peak_equity": peak}
     halt = fresh.get("risk_halt", False)
@@ -247,10 +287,10 @@ async def auto_tick(user: dict = Depends(get_current_user)):
             pr = tickers.get(p["symbol"], {}).get("price", p["entry_price"])
             await _close_position(uid, p, pr, "drawdown_halt")
         halt = True
-        reason = f"Drawdown {dd:.0f}% reached the {dd_limit:.0f}% circuit-breaker — all positions closed."
+        reason = f"Max drawdown {dd:.0f}% reached the {dd_limit:.0f}% limit. All positions closed. Bot halted."
     elif not halt and cl >= max_losses:
         halt = True
-        reason = f"{cl} consecutive losses — auto-trade paused until you re-authorize."
+        reason = f"{max_losses} consecutive losses. Bot halted. Confirm to resume."
 
     if halt:
         s = dict(settings)
@@ -258,25 +298,44 @@ async def auto_tick(user: dict = Depends(get_current_user)):
         updates.update({"risk_halt": True, "halt_reason": reason, "settings": s})
         await db.users.update_one({"_id": ObjectId(uid)}, {"$set": updates})
         return {"closed": events, "opened": [], "halt": True, "halt_reason": reason,
-                "equity": round(equity, 2), "drawdown_pct": round(dd, 1)}
+                "equity": round(equity, 2), "drawdown_pct": round(dd, 1),
+                "consecutive_losses": cl, "blocked_reason": None}
 
     opened = []
+    blocked_reason = None
     if settings.get("auto_trade"):
         held = {p["symbol"] for p in positions}
-        max_conc = int(settings.get("max_concurrent_auto", 2))
-        if len(positions) < max_conc and balance > 5:
+        # Rule 4 & 5: max concurrent trades across ALL timeframes (hard cap from .env)
+        max_conc = min(int(settings.get("max_concurrent_auto", MAX_CONCURRENT_TRADES)), MAX_CONCURRENT_TRADES)
+        if len(positions) >= max_conc:
+            blocked_reason = "Max concurrent trades reached."
+        elif balance > 5:
+            # Rule 6: candidates = majors + legitimate shitcoins (Safety Score >= threshold)
+            candidates = list(COINS)
+            try:
+                safe_memes = await get_safe_memecoins(MIN_SAFETY_SCORE)
+                for m in safe_memes:
+                    tickers.setdefault(m["symbol"], {})["price"] = m["price"]
+                    candidates.append({"symbol": m["symbol"], "name": m["name"]})
+            except Exception:
+                pass
             best = None  # (symbol, timeframe, sig)
-            for c in COINS:
+            for c in candidates:
                 if c["symbol"] in held:
+                    continue
+                if not tickers.get(c["symbol"], {}).get("price"):
                     continue
                 for tf in AUTO_TIMEFRAMES:
                     d = await get_klines(c["symbol"], tf, 80)
                     sig = compute_signal(d["candles"])
-                    if sig["action"] == "BUY" and sig["score"] >= 62:
+                    if sig["action"] == "BUY" and sig["score"] >= AUTO_MIN_SCORE:
                         if best is None or sig["score"] > best[2]["score"]:
                             best = (c["symbol"], tf, sig)
+                        break  # coin qualifies; move on to keep the scan light
+                if best and best[2]["score"] >= 90:
+                    break  # very strong entry found; stop scanning
             if best:
-                lev = min(float(settings.get("auto_leverage", 10.0)), 10.0)
+                lev = _ai_leverage(best[2]["score"])  # AI-decided, capped at AUTO_MAX_LEVERAGE
                 usd = min(balance * settings.get("max_position_pct", 25.0) / 100, balance)
                 if usd > 1:
                     await _open_position(uid, best[0], "BUY", round(usd, 2), tickers, settings, "auto", lev)
@@ -284,24 +343,49 @@ async def auto_tick(user: dict = Depends(get_current_user)):
                                    "score": best[2]["score"], "leverage": lev})
     await db.users.update_one({"_id": ObjectId(uid)}, {"$set": updates})
     return {"closed": events, "opened": opened, "halt": False,
-            "equity": round(equity, 2), "drawdown_pct": round(dd, 1), "consecutive_losses": cl}
+            "equity": round(equity, 2), "drawdown_pct": round(dd, 1),
+            "consecutive_losses": cl, "blocked_reason": blocked_reason}
 
 
 @trading_router.get("/auto/status")
 async def auto_status(user: dict = Depends(get_current_user)):
     fresh = await _get_user(user["id"])
-    return {"risk_halt": fresh.get("risk_halt", False),
-            "halt_reason": fresh.get("halt_reason"),
-            "consecutive_losses": fresh.get("consecutive_losses", 0),
-            "peak_equity": round(fresh.get("peak_equity", 0), 2)}
+    tickers = await get_tickers()
+    balance, equity, positions = await _account_equity(user["id"], tickers)
+    peak = max(fresh.get("peak_equity", equity), equity)
+    dd = (peak - equity) / peak * 100 if peak > 0 else 0
+    halted = fresh.get("risk_halt", False)
+    return {
+        "risk_halt": halted,
+        "risk_mode": "Halted" if halted else "Active",
+        "halt_reason": fresh.get("halt_reason"),
+        "consecutive_losses": fresh.get("consecutive_losses", 0),
+        "drawdown_pct": round(dd, 1),
+        "open_positions": len(positions),
+        "peak_equity": round(peak, 2),
+        "equity": round(equity, 2),
+        "limits": {
+            "max_leverage": AUTO_MAX_LEVERAGE,
+            "default_leverage": AUTO_DEFAULT_LEVERAGE,
+            "max_concurrent": MAX_CONCURRENT_TRADES,
+            "max_drawdown_pct": MAX_DRAWDOWN_PCT,
+            "max_consecutive_losses": MAX_CONSECUTIVE_LOSSES,
+            "min_safety_score": MIN_SAFETY_SCORE,
+            "timeframes": AUTO_TIMEFRAMES,
+        },
+    }
 
 
 @trading_router.post("/auto/resume")
 async def auto_resume(user: dict = Depends(get_current_user)):
-    """User re-authorizes the bot after a risk halt."""
-    await db.users.update_one({"_id": ObjectId(user["id"])},
+    """User re-authorizes the bot after a risk halt. Resets counters and re-seeds
+    the drawdown peak to current equity so it doesn't immediately re-halt."""
+    uid = user["id"]
+    tickers = await get_tickers()
+    _, equity, _ = await _account_equity(uid, tickers)
+    await db.users.update_one({"_id": ObjectId(uid)},
                               {"$set": {"risk_halt": False, "halt_reason": None,
-                                        "consecutive_losses": 0}})
+                                        "consecutive_losses": 0, "peak_equity": round(equity, 2)}})
     return {"ok": True}
 
 
@@ -353,7 +437,9 @@ async def reset_demo(user: dict = Depends(get_current_user)):
     uid = user["id"]
     await db.positions.delete_many({"user_id": uid})
     await db.users.update_one({"_id": ObjectId(uid)},
-                              {"$set": {"demo_balance": 100.0, "last_deposit_at": _now()}})
+                              {"$set": {"demo_balance": 100.0, "last_deposit_at": _now(),
+                                        "peak_equity": 100.0, "consecutive_losses": 0,
+                                        "risk_halt": False, "halt_reason": None}})
     return {"ok": True, "demo_balance": 100.0}
 
 
