@@ -44,3 +44,38 @@ Secure server-side auth; demo-first ($100); multi-language RTL; fixed sidebar + 
 
 ## Next Tasks
 - Confirm target chain for NFT launch and whether real trading + owner console are needed now.
+
+---
+## Changelog (this session)
+
+### Phase 1 — UI/UX & Localization (DONE)
+- English-digit LTR numbers everywhere (Intl en-US + `.mono/.num` unicode-bidi isolate); RTL table fixes + mobile card lists.
+- Full EN/FA i18n; dynamic value translator `tv()` (BUY/SELL/HOLD, tiers, verdicts, reasons, source). Guide steps translated + numbered.
+- NFT embedded-image-text removal deferred by user (cost); card text already CSS-rendered.
+
+### Phase 2 — Auto-Trade Risk Rules (DONE, curl-verified)
+- All limits in backend/.env: AUTO_MAX_LEVERAGE, AUTO_DEFAULT_LEVERAGE, MAX_CONCURRENT_TRADES, MAX_DRAWDOWN_PCT, MAX_CONSECUTIVE_LOSSES, MIN_STOP_LOSS_PCT, MIN_SAFETY_SCORE, AUTO_MIN_SCORE, AUTO_TIMEFRAMES.
+- Mandatory SL/TP, strict 2:1, AI leverage (2→10x by score), max 2 concurrent ("Max concurrent trades reached."), all timeframes, safe memecoins (safety≥75), 20% drawdown halt, 5 consecutive-loss halt.
+- Fixed equity/drawdown inflation bug via `_account_equity` (cash+margin+unrealized); peak reset on demo-reset/resume.
+- UI risk-status indicator (mode, consecutive losses, drawdown).
+
+### Phase 3 — Cloud Trading & Multi-Exchange (DONE, curl-verified)
+- Server-side 24/7 cloud trading via platform cron `.emergent/crons.yml` → POST /api/cron/trade-cycle (Bearer WEBHOOK_CRON_SECRET). Enable/Disable buttons + green/red status.
+- SSE `/api/trading/stream` real-time (no polling); state persisted in DB.
+- In-app notifications (bell + badge) on open/close/SL-TP/halt.
+- Adapter pattern (exchange_adapters.py): BaseExchangeAdapter, CCXTAdapter (CoinEx/XT/Toobit/Binance/Kraken/OKX/Bybit), Iranian REST (Nobitex/Wallex/Bitpin), DEX (Uniswap/Pancake/Jupiter), ExchangeManager. Aggregated balances/prices UI. Keys encrypted (Fernet). Injected non-custodial wallet connect.
+- NFT marketplaces endpoint (OpenSea/Blur/Magic Eden/TON Diamonds) with fallback.
+- NOTE: live order execution not enabled (demo); cloud cadence ≥15min in prod.
+
+### Security Audit + Fixes (DONE, testing_agent iteration_5 = 19/19 PASS)
+- SEC-002: SSE now uses a short-lived scoped stream token (type "stream", 60s) via POST /api/trading/stream-token; full access JWT rejected on the stream (401). auth.py: create_stream_token/decode_stream_sub.
+- SEC-001: exchange keys encrypted at rest with dedicated DATA_ENCRYPTION_KEY (separate from JWT_SECRET); api_key no longer stored in plaintext (api_key_enc + api_key_masked); legacy decrypt fallback. Only masked keys returned.
+- Hardening: malformed ObjectId → 404 (exchanges + notifications).
+- Verdict was CONDITIONAL PASS; both MEDIUM findings now fixed & verified.
+
+## Backlog / Next
+- P0: Phase 4 — Crypto payment gateway (TRC20/BEP20/ERC20), Owner Console profit withdrawal, on-chain webhook verify, admin 2FA.
+- P1: Phases 5 (AI assistant floating chat, forgot-password, support), 6 (backtest timeframes, real scanner + anti-scam, top-3), 7 (Lightweight Charts, bot reasoning panel, onboarding icons).
+- P2: full 10-language translations; live order execution (real trading) once keys provided.
+- Cleanup: remove now-unused auth.decode_access_sub.
+
