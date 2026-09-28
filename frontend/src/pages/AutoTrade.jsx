@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Bot, Zap, ShieldCheck, ShieldAlert, TrendingDown } from "lucide-react";
-import api, { formatApiErrorDetail } from "@/lib/api";
+import api, { API, getToken, formatApiErrorDetail } from "@/lib/api";
 import { useI18n } from "@/i18n";
 import { PageTitle, Panel, Stat, fmt, pnlColor } from "@/components/common";
 
@@ -86,6 +86,31 @@ export default function AutoTrade() {
     }
   };
 
+  const cloudToggle = async () => {
+    const next = !st?.cloud_trading;
+    try {
+      await api.post(next ? "/trading/cloud/enable" : "/trading/cloud/disable");
+      qc.invalidateQueries({ queryKey: ["auto-status"] });
+      toast.success(next ? t("enable_cloud") : t("disable_cloud"));
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err.response?.data?.detail));
+    }
+  };
+
+  // Real-time updates via Server-Sent Events (no polling)
+  useEffect(() => {
+    const token = getToken();
+    if (!token) return;
+    const es = new EventSource(`${API}/trading/stream?token=${token}`);
+    es.onmessage = () => {
+      qc.invalidateQueries({ queryKey: ["auto-status"] });
+      qc.invalidateQueries({ queryKey: ["portfolio"] });
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+    };
+    es.onerror = () => es.close();
+    return () => es.close();
+  }, [qc]);
+
   return (
     <div>
       <PageTitle title={t("nav_autotrade")} subtitle={t("disclaimer")} />
@@ -161,6 +186,23 @@ export default function AutoTrade() {
               className={`px-6 py-3 rounded-xl font-semibold ${on ? "bg-destructive/20 text-danger border border-destructive/40" : "fire-btn"}`}>
               {on ? t("auto_trade_off") : t("enable_autotrade")}
             </button>
+
+            {/* Cloud trading (24/7 server-side) */}
+            <div className="w-full mt-6 pt-6 border-t border-border/50" data-testid="cloud-trading-control">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <span className={`w-2.5 h-2.5 rounded-full ${st?.cloud_trading ? "bg-success ember-pulse" : "bg-muted-foreground/40"}`} data-testid="cloud-status-dot" />
+                <span className="text-sm font-semibold">{t("cloud_status")}: {" "}
+                  <span className={st?.cloud_trading ? "text-success" : "text-muted-foreground"} data-testid="cloud-status-value">
+                    {st?.cloud_trading ? t("cloud_on") : t("cloud_off")}
+                  </span>
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3 max-w-xs mx-auto">{t("cloud_desc")}</p>
+              <button onClick={cloudToggle} data-testid="cloud-toggle-button"
+                className={`px-5 py-2.5 rounded-lg font-semibold text-sm border ${st?.cloud_trading ? "border-destructive/40 text-danger hover:bg-destructive/10" : "border-success/40 text-success hover:bg-success/10"}`}>
+                {st?.cloud_trading ? t("disable_cloud") : t("enable_cloud")}
+              </button>
+            </div>
           </div>
         </Panel>
 

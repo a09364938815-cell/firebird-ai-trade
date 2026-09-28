@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   LayoutDashboard, CandlestickChart, Radar, Bot, Hand, ScanSearch,
   FlaskConical, Wallet, Gem, Sparkles, Settings as SettingsIcon,
-  BookOpen, LogOut, Menu, X, Globe, Crown,
+  BookOpen, LogOut, Menu, X, Globe, Crown, Bell,
 } from "lucide-react";
 import { Logo } from "./Logo";
+import api from "@/lib/api";
 import { useI18n, LANGUAGES } from "@/i18n";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -101,6 +103,7 @@ export default function Layout() {
             <span className="w-2 h-2 rounded-full bg-success ember-pulse" />
             {t("demo_mode")} · ${Number(user?.demo_balance ?? 100).toFixed(0)}
           </span>
+          <NotificationsBell />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -170,5 +173,57 @@ export default function Layout() {
         </div>
       </main>
     </div>
+  );
+}
+
+
+function NotificationsBell() {
+  const { t } = useI18n();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const { data } = useQuery({
+    queryKey: ["notifications"],
+    queryFn: () => api.get("/notifications").then((r) => r.data),
+    refetchInterval: 30000,
+  });
+  const unread = data?.unread || 0;
+  const items = data?.items || [];
+
+  const markRead = async () => {
+    await api.post("/notifications/read");
+    qc.invalidateQueries({ queryKey: ["notifications"] });
+  };
+
+  return (
+    <DropdownMenu onOpenChange={(o) => { setOpen(o); if (o && unread) markRead(); }}>
+      <DropdownMenuTrigger asChild>
+        <button className="relative p-2 rounded-md hover:bg-secondary border border-border" data-testid="notifications-bell">
+          <Bell size={16} />
+          {unread > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-[10px] font-bold text-white flex items-center justify-center num" data-testid="notifications-badge">
+              {unread}
+            </span>
+          )}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="glass w-80 max-h-96 overflow-y-auto" data-testid="notifications-panel">
+        <div className="flex items-center justify-between px-2 py-1.5">
+          <span className="text-sm font-semibold">{t("notifications")}</span>
+          {items.length > 0 && (
+            <button onClick={markRead} className="text-xs text-primary hover:underline" data-testid="mark-all-read">{t("mark_all_read")}</button>
+          )}
+        </div>
+        {items.length === 0 ? (
+          <div className="px-3 py-6 text-center text-sm text-muted-foreground">{t("no_notifications")}</div>
+        ) : (
+          items.slice(0, 15).map((n) => (
+            <div key={n.id} className={`px-3 py-2 text-xs border-t border-border/40 ${n.read ? "text-muted-foreground" : "text-foreground"}`} data-testid={`notification-${n.id}`}>
+              <div>{n.message}</div>
+              <div className="mono text-[10px] text-muted-foreground mt-0.5" dir="ltr">{(n.created_at || "").slice(0, 19).replace("T", " ")}</div>
+            </div>
+          ))
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

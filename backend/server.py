@@ -11,6 +11,9 @@ from scanner import scanner_router
 from ai_core import ai_router
 from nft import nft_router, seed_nft
 from owner import owner_router
+from exchanges import exchanges_router
+from notifications import notifications_router
+from cron import cron_router
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -34,6 +37,9 @@ app.include_router(scanner_router)
 app.include_router(ai_router)
 app.include_router(nft_router)
 app.include_router(owner_router)
+app.include_router(exchanges_router)
+app.include_router(notifications_router)
+app.include_router(cron_router)
 
 import os
 
@@ -52,6 +58,8 @@ async def startup():
         await db.users.create_index("email", unique=True)
         await db.login_attempts.create_index("identifier")
         await db.nft_items.create_index("token_id", unique=True)
+        await db.notifications.create_index("user_id")
+        await db.exchange_connections.create_index("user_id")
         await seed_admin()
         await seed_nft()
         logger.info("Firebird startup complete")

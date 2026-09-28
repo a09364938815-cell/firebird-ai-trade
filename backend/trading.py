@@ -1,9 +1,12 @@
 from datetime import datetime, timezone, timedelta
 import os
+import json
+import asyncio
 
 import numpy as np
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from db import db
@@ -263,15 +266,25 @@ async def _apply_risk_management(uid: str, tickers):
     return events
 
 
-@trading_router.post("/auto/tick")
-async def auto_tick(user: dict = Depends(get_current_user)):
-    """One evaluation cycle of the rules-based auto-trader (demo only)."""
-    uid = user["id"]
-    settings = user.get("settings", {})
+async def _notify(uid: str, ntype: str, message: str, meta: dict | None = None):
+    """Create an in-app notification (persisted). Used for trade/halt events."""
+    await db.notifications.insert_one({
+        "user_id": uid, "type": ntype, "message": message,
+        "meta": meta or {}, "read": False, "created_at": _now()})
+
+
+async def _auto_cycle(uid: str):
+    """One evaluation cycle of the rules-based auto-trader (demo). Reusable by the
+    HTTP tick and the server-side cloud cron so the bot runs 24/7."""
+    fresh = await _get_user(uid)
+    settings = fresh.get("settings", {})
     tickers = await get_tickers()
     events = await _apply_risk_management(uid, tickers)
+    for ev in events:  # notify SL/TP/liquidation closes
+        await _notify(uid, "trade_closed",
+                      f"{ev['reason']}: {ev['symbol']} closed · PnL ${ev['pnl']}",
+                      {"symbol": ev["symbol"], "reason": ev["reason"], "pnl": ev["pnl"]})
 
-    fresh = await _get_user(uid)
     balance, equity, positions = await _account_equity(uid, tickers)
     peak = max(fresh.get("peak_equity", equity), equity)
     dd = (peak - equity) / peak * 100 if peak > 0 else 0
@@ -297,6 +310,7 @@ async def auto_tick(user: dict = Depends(get_current_user)):
         s["auto_trade"] = False
         updates.update({"risk_halt": True, "halt_reason": reason, "settings": s})
         await db.users.update_one({"_id": ObjectId(uid)}, {"$set": updates})
+        await _notify(uid, "risk_halt", reason, {"drawdown_pct": round(dd, 1)})
         return {"closed": events, "opened": [], "halt": True, "halt_reason": reason,
                 "equity": round(equity, 2), "drawdown_pct": round(dd, 1),
                 "consecutive_losses": cl, "blocked_reason": None}
@@ -341,10 +355,19 @@ async def auto_tick(user: dict = Depends(get_current_user)):
                     await _open_position(uid, best[0], "BUY", round(usd, 2), tickers, settings, "auto", lev)
                     opened.append({"symbol": best[0], "timeframe": best[1],
                                    "score": best[2]["score"], "leverage": lev})
+                    await _notify(uid, "trade_opened",
+                                  f"Opened {best[0]} {best[1]} · score {best[2]['score']} · {lev}x",
+                                  {"symbol": best[0], "timeframe": best[1], "leverage": lev})
     await db.users.update_one({"_id": ObjectId(uid)}, {"$set": updates})
     return {"closed": events, "opened": opened, "halt": False,
             "equity": round(equity, 2), "drawdown_pct": round(dd, 1),
             "consecutive_losses": cl, "blocked_reason": blocked_reason}
+
+
+@trading_router.post("/auto/tick")
+async def auto_tick(user: dict = Depends(get_current_user)):
+    """One evaluation cycle triggered by the client (demo only)."""
+    return await _auto_cycle(user["id"])
 
 
 @trading_router.get("/auto/status")
@@ -358,6 +381,8 @@ async def auto_status(user: dict = Depends(get_current_user)):
     return {
         "risk_halt": halted,
         "risk_mode": "Halted" if halted else "Active",
+        "cloud_trading": fresh.get("cloud_trading", False),
+        "cloud_status": ("halted" if halted else ("active" if fresh.get("cloud_trading") else "off")),
         "halt_reason": fresh.get("halt_reason"),
         "consecutive_losses": fresh.get("consecutive_losses", 0),
         "drawdown_pct": round(dd, 1),
@@ -374,6 +399,70 @@ async def auto_status(user: dict = Depends(get_current_user)):
             "timeframes": AUTO_TIMEFRAMES,
         },
     }
+
+
+@trading_router.post("/cloud/enable")
+async def cloud_enable(user: dict = Depends(get_current_user)):
+    """Turn on 24/7 server-side cloud trading. The platform cron drives it even
+    when the user's device is offline."""
+    uid = user["id"]
+    fresh = await _get_user(uid)
+    s = dict(fresh.get("settings", {}))
+    s["auto_trade"] = True
+    await db.users.update_one({"_id": ObjectId(uid)},
+                              {"$set": {"cloud_trading": True, "settings": s}})
+    await _notify(uid, "cloud", "Cloud trading enabled — bot runs 24/7.")
+    return {"ok": True, "cloud_trading": True}
+
+
+@trading_router.post("/cloud/disable")
+async def cloud_disable(user: dict = Depends(get_current_user)):
+    uid = user["id"]
+    fresh = await _get_user(uid)
+    s = dict(fresh.get("settings", {}))
+    s["auto_trade"] = False
+    await db.users.update_one({"_id": ObjectId(uid)},
+                              {"$set": {"cloud_trading": False, "settings": s}})
+    await _notify(uid, "cloud", "Cloud trading disabled.")
+    return {"ok": True, "cloud_trading": False}
+
+
+@trading_router.get("/stream")
+async def stream(token: str = "", request: Request = None):
+    """Server-Sent Events: pushes live status + portfolio to the client without
+    polling. EventSource cannot set headers, so the JWT is passed as a query param."""
+    from auth import decode_access_sub
+    uid = decode_access_sub(token)
+    if not uid:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    async def event_gen():
+        while True:
+            if request and await request.is_disconnected():
+                break
+            try:
+                fresh = await _get_user(uid)
+                tickers = await get_tickers()
+                balance, equity, positions = await _account_equity(uid, tickers)
+                peak = max(fresh.get("peak_equity", equity), equity)
+                dd = (peak - equity) / peak * 100 if peak > 0 else 0
+                unread = await db.notifications.count_documents({"user_id": uid, "read": False})
+                payload = {
+                    "cloud_trading": fresh.get("cloud_trading", False),
+                    "risk_halt": fresh.get("risk_halt", False),
+                    "consecutive_losses": fresh.get("consecutive_losses", 0),
+                    "drawdown_pct": round(dd, 1),
+                    "equity": round(equity, 2),
+                    "open_positions": len(positions),
+                    "unread_notifications": unread,
+                }
+                yield f"data: {json.dumps(payload)}\n\n"
+            except Exception as e:
+                yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+            await asyncio.sleep(5)
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @trading_router.post("/auto/resume")

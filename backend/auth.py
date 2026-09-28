@@ -39,6 +39,19 @@ def create_access_token(user_id: str, email: str) -> str:
     return jwt.encode(payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
 
 
+def decode_access_sub(token: str) -> str | None:
+    """Return the user id (sub) from a valid access token, else None.
+    Used by SSE where the JWT arrives as a query param."""
+    try:
+        payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "access":
+            return None
+        return payload.get("sub")
+    except jwt.InvalidTokenError:
+        return None
+
+
+
 def create_refresh_token(user_id: str) -> str:
     payload = {
         "sub": user_id,

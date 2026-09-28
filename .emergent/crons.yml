@@ -1,0 +1,8 @@
+crons:
+  - name: cloud-trade-cycle
+    description: "Runs the 24/7 server-side auto-trade cycle for all cloud-trading users"
+    cron: "*/15 * * * *"
+    endpoint: "{{BASE_URL}}/api/cron/trade-cycle"
+    method: POST
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    enabled: true

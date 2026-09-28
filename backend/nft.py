@@ -151,6 +151,41 @@ async def item(token_id: int):
     return doc
 
 
+NFT_MARKETS = [
+    {"id": "opensea", "name": "OpenSea", "chain": "Ethereum", "url": "https://opensea.io",
+     "iran_friendly": False, "note": "Largest marketplace; may require VPN for Iranian users."},
+    {"id": "blur", "name": "Blur", "chain": "Ethereum", "url": "https://blur.io",
+     "iran_friendly": False, "note": "Pro trader marketplace with bidding pools."},
+    {"id": "magiceden", "name": "Magic Eden", "chain": "Solana / Multi", "url": "https://magiceden.io",
+     "iran_friendly": True, "note": "Solana-first, low fees, generally accessible."},
+    {"id": "tondiamonds", "name": "TON Diamonds", "chain": "TON", "url": "https://ton.diamonds",
+     "iran_friendly": True, "note": "Fallback marketplace on TON, accessible from Iran."},
+]
+
+
+@nft_router.get("/markets")
+async def markets():
+    """NFT marketplaces for Iranian users, with an accessible fallback list.
+    Live floor stats are best-effort; static fallback keeps the UI functional."""
+    import httpx
+    me_collections = []
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as c:
+            r = await c.get("https://api-mainnet.magiceden.dev/v2/collections",
+                            params={"offset": 0, "limit": 4})
+            if r.status_code == 200:
+                for col in r.json()[:4]:
+                    me_collections.append({
+                        "name": col.get("name"), "symbol": col.get("symbol"),
+                        "image": col.get("image"),
+                    })
+    except Exception:
+        me_collections = []
+    return {"markets": NFT_MARKETS, "featured_magiceden": me_collections,
+            "note": "If a marketplace is blocked, use an Iran-friendly fallback (Magic Eden / TON Diamonds)."}
+
+
+
 class GenerateInput(BaseModel):
     prompt: str = ""
 
