@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from db import db
 from auth import get_current_user
@@ -28,5 +28,9 @@ async def mark_all_read(user: dict = Depends(get_current_user)):
 
 @notifications_router.delete("/{notification_id}")
 async def delete_notification(notification_id: str, user: dict = Depends(get_current_user)):
-    await db.notifications.delete_one({"_id": ObjectId(notification_id), "user_id": user["id"]})
+    try:
+        oid = ObjectId(notification_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    await db.notifications.delete_one({"_id": oid, "user_id": user["id"]})
     return {"ok": True}

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Bot, Zap, ShieldCheck, ShieldAlert, TrendingDown } from "lucide-react";
-import api, { API, getToken, formatApiErrorDetail } from "@/lib/api";
+import api, { API, formatApiErrorDetail } from "@/lib/api";
 import { useI18n } from "@/i18n";
 import { PageTitle, Panel, Stat, fmt, pnlColor } from "@/components/common";
 
@@ -97,18 +97,33 @@ export default function AutoTrade() {
     }
   };
 
-  // Real-time updates via Server-Sent Events (no polling)
+  // Real-time updates via Server-Sent Events (no polling).
+  // Uses a short-lived scoped stream token instead of the access JWT in the URL.
   useEffect(() => {
-    const token = getToken();
-    if (!token) return;
-    const es = new EventSource(`${API}/trading/stream?token=${token}`);
-    es.onmessage = () => {
-      qc.invalidateQueries({ queryKey: ["auto-status"] });
-      qc.invalidateQueries({ queryKey: ["portfolio"] });
-      qc.invalidateQueries({ queryKey: ["notifications"] });
+    let es = null;
+    let stopped = false;
+    let retry = null;
+
+    const connect = async () => {
+      try {
+        const { data } = await api.post("/trading/stream-token");
+        if (stopped || !data?.token) return;
+        es = new EventSource(`${API}/trading/stream?token=${data.token}`);
+        es.onmessage = () => {
+          qc.invalidateQueries({ queryKey: ["auto-status"] });
+          qc.invalidateQueries({ queryKey: ["portfolio"] });
+          qc.invalidateQueries({ queryKey: ["notifications"] });
+        };
+        es.onerror = () => {
+          es?.close();
+          if (!stopped) retry = setTimeout(connect, 5000); // reconnect with a fresh token
+        };
+      } catch (e) {
+        if (!stopped) retry = setTimeout(connect, 8000);
+      }
     };
-    es.onerror = () => es.close();
-    return () => es.close();
+    connect();
+    return () => { stopped = true; if (retry) clearTimeout(retry); es?.close(); };
   }, [qc]);
 
   return (

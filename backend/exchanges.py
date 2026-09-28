@@ -1,3 +1,4 @@
+import os
 import base64
 import hashlib
 from datetime import datetime, timezone
@@ -17,16 +18,34 @@ SUPPORTED_IDS = {e["id"] for e in SUPPORTED_EXCHANGES}
 
 
 def _fernet() -> Fernet:
+    """Encryption at rest uses a dedicated data key (DATA_ENCRYPTION_KEY),
+    kept separate from JWT_SECRET so a session-secret leak cannot decrypt keys."""
+    key = os.environ.get("DATA_ENCRYPTION_KEY")
+    if not key:
+        raise RuntimeError("DATA_ENCRYPTION_KEY is not configured")
+    return Fernet(key.encode())
+
+
+def _legacy_fernet() -> Fernet:
+    """Decrypt secrets written before the dedicated key existed (JWT_SECRET-derived)."""
     raw = hashlib.sha256(get_jwt_secret().encode()).digest()
     return Fernet(base64.urlsafe_b64encode(raw))
 
 
 def _encrypt(plain: str) -> str:
-    return _fernet().encrypt(plain.encode()).decode()
+    return _fernet().encrypt(plain.encode()).decode() if plain else ""
 
 
 def _decrypt(token: str) -> str:
-    return _fernet().decrypt(token.encode()).decode()
+    if not token:
+        return ""
+    try:
+        return _fernet().decrypt(token.encode()).decode()
+    except Exception:
+        try:
+            return _legacy_fernet().decrypt(token.encode()).decode()
+        except Exception:
+            return ""
 
 
 def _mask(secret: str) -> str:
@@ -35,6 +54,20 @@ def _mask(secret: str) -> str:
     if len(secret) <= 8:
         return "****"
     return f"{secret[:4]}****{secret[-4:]}"
+
+
+def _oid(value: str) -> ObjectId:
+    try:
+        return ObjectId(value)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+
+def _conn_api_key(d: dict) -> str:
+    """Read the stored API key: prefer encrypted field, fall back to legacy plaintext."""
+    if d.get("api_key_enc"):
+        return _decrypt(d["api_key_enc"])
+    return d.get("api_key", "")
 
 
 def _now():
@@ -83,7 +116,7 @@ async def list_connections(user: dict = Depends(get_current_user)):
             "exchange": d["exchange"],
             "exchange_name": m.get("name", d["exchange"]),
             "kind": m.get("kind", "cex"),
-            "api_key_masked": _mask(d.get("api_key", "")),
+            "api_key_masked": d.get("api_key_masked") or _mask(d.get("api_key", "")),
             "verified": d.get("verified", False),
             "status_message": d.get("status_message", ""),
             "live_trading": d.get("live_trading", False),
@@ -99,17 +132,21 @@ async def connect(data: ConnectInput, user: dict = Depends(get_current_user)):
     if ex not in SUPPORTED_IDS:
         raise HTTPException(status_code=400, detail=f"Unsupported exchange: {data.exchange}")
     result = await _verify(ex, data.api_key.strip(), data.api_secret.strip())
+    api_key = data.api_key.strip()
     doc = {
         "user_id": user["id"], "exchange": ex,
-        "api_key": data.api_key.strip(),
-        "secret_enc": _encrypt(data.api_secret.strip()) if data.api_secret.strip() else "",
+        "api_key_enc": _encrypt(api_key),
+        "api_key_masked": _mask(api_key),
+        "secret_enc": _encrypt(data.api_secret.strip()),
         "verified": result["ok"], "status_message": result["message"],
         "last_balances": result["balances"], "live_trading": False,
         "created_at": _now(), "updated_at": _now(),
     }
     existing = await db.exchange_connections.find_one({"user_id": user["id"], "exchange": ex})
     if existing:
-        await db.exchange_connections.update_one({"_id": existing["_id"]}, {"$set": doc})
+        # drop any legacy plaintext key on update
+        await db.exchange_connections.update_one({"_id": existing["_id"]},
+                                                 {"$set": doc, "$unset": {"api_key": ""}})
         cid = str(existing["_id"])
     else:
         res = await db.exchange_connections.insert_one(doc)
@@ -119,11 +156,11 @@ async def connect(data: ConnectInput, user: dict = Depends(get_current_user)):
 
 @exchanges_router.post("/{connection_id}/test")
 async def test_connection(connection_id: str, user: dict = Depends(get_current_user)):
-    d = await db.exchange_connections.find_one({"_id": ObjectId(connection_id), "user_id": user["id"]})
+    d = await db.exchange_connections.find_one({"_id": _oid(connection_id), "user_id": user["id"]})
     if not d:
         raise HTTPException(status_code=404, detail="Connection not found")
     secret = _decrypt(d["secret_enc"]) if d.get("secret_enc") else ""
-    result = await _verify(d["exchange"], d.get("api_key", ""), secret)
+    result = await _verify(d["exchange"], _conn_api_key(d), secret)
     await db.exchange_connections.update_one({"_id": d["_id"]},
         {"$set": {"verified": result["ok"], "status_message": result["message"],
                   "last_balances": result["balances"], "updated_at": _now()}})
@@ -132,7 +169,7 @@ async def test_connection(connection_id: str, user: dict = Depends(get_current_u
 
 @exchanges_router.post("/{connection_id}/live")
 async def toggle_live(connection_id: str, data: LiveToggleInput, user: dict = Depends(get_current_user)):
-    d = await db.exchange_connections.find_one({"_id": ObjectId(connection_id), "user_id": user["id"]})
+    d = await db.exchange_connections.find_one({"_id": _oid(connection_id), "user_id": user["id"]})
     if not d:
         raise HTTPException(status_code=404, detail="Connection not found")
     if data.live_trading and not d.get("verified"):
@@ -144,7 +181,7 @@ async def toggle_live(connection_id: str, data: LiveToggleInput, user: dict = De
 
 @exchanges_router.delete("/{connection_id}")
 async def delete_connection(connection_id: str, user: dict = Depends(get_current_user)):
-    res = await db.exchange_connections.delete_one({"_id": ObjectId(connection_id), "user_id": user["id"]})
+    res = await db.exchange_connections.delete_one({"_id": _oid(connection_id), "user_id": user["id"]})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Connection not found")
     return {"deleted": True}
@@ -153,13 +190,8 @@ async def delete_connection(connection_id: str, user: dict = Depends(get_current
 def _manager_conns(docs):
     conns = []
     for d in docs:
-        secret = ""
-        if d.get("secret_enc"):
-            try:
-                secret = _decrypt(d["secret_enc"])
-            except Exception:
-                secret = ""
-        conns.append({"exchange": d["exchange"], "api_key": d.get("api_key", ""), "secret": secret})
+        secret = _decrypt(d["secret_enc"]) if d.get("secret_enc") else ""
+        conns.append({"exchange": d["exchange"], "api_key": _conn_api_key(d), "secret": secret})
     return conns
 
 

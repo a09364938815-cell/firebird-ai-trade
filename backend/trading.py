@@ -427,12 +427,20 @@ async def cloud_disable(user: dict = Depends(get_current_user)):
     return {"ok": True, "cloud_trading": False}
 
 
+@trading_router.post("/stream-token")
+async def stream_token(user: dict = Depends(get_current_user)):
+    """Issue a short-lived, single-purpose token for the SSE stream (avoids putting
+    the long-lived access JWT in the URL)."""
+    from auth import create_stream_token
+    return {"token": create_stream_token(user["id"])}
+
+
 @trading_router.get("/stream")
 async def stream(token: str = "", request: Request = None):
     """Server-Sent Events: pushes live status + portfolio to the client without
-    polling. EventSource cannot set headers, so the JWT is passed as a query param."""
-    from auth import decode_access_sub
-    uid = decode_access_sub(token)
+    polling. Authenticated with a short-lived scoped stream token (not the access JWT)."""
+    from auth import decode_stream_sub
+    uid = decode_stream_sub(token)
     if not uid:
         raise HTTPException(status_code=401, detail="Invalid token")
 

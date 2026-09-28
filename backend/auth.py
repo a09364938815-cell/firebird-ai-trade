@@ -51,6 +51,28 @@ def decode_access_sub(token: str) -> str | None:
         return None
 
 
+def create_stream_token(user_id: str) -> str:
+    """Short-lived (60s), single-purpose token for authenticating the SSE stream
+    so the long-lived access JWT never appears in a URL query string."""
+    payload = {
+        "sub": user_id,
+        "exp": datetime.now(timezone.utc) + timedelta(seconds=60),
+        "type": "stream",
+    }
+    return jwt.encode(payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
+
+
+def decode_stream_sub(token: str) -> str | None:
+    """Validate a stream token (type + expiry) and return its user id, else None."""
+    try:
+        payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "stream":
+            return None
+        return payload.get("sub")
+    except jwt.InvalidTokenError:
+        return None
+
+
 
 def create_refresh_token(user_id: str) -> str:
     payload = {
