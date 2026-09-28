@@ -15,7 +15,7 @@ const tierColor = {
 };
 
 export default function NFT() {
-  const { t } = useI18n();
+  const { t, tv } = useI18n();
   const [tier, setTier] = useState("all");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(null);
@@ -32,10 +32,10 @@ export default function NFT() {
 
   return (
     <div>
-      <PageTitle title={t("collection")} subtitle="Firebird / Phoenix — 555 items · 6 legendary rares · each with its own story of destruction and rebirth" />
+      <PageTitle title={t("collection")} subtitle={t("nft_subtitle")} />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Stat label="Total Supply" value={s?.total_supply ?? 555} accent="fire-text" />
+        <Stat label={t("total_supply")} value={s?.total_supply ?? 555} accent="fire-text" />
         <Stat label={t("minted")} value={s?.minted ?? "—"} />
         <Stat label={t("rares")} value="6" accent="text-gold" />
         <Stat label={t("floor_price")} value={`${s?.floor_price_eth ?? "—"} ETH`} />
@@ -63,7 +63,7 @@ export default function NFT() {
         {TIERS.map((ti) => (
           <button key={ti} onClick={() => { setTier(ti); setPage(1); }} data-testid={`nft-tier-${ti}`}
             className={`px-3 py-1.5 rounded-lg text-sm border ${tier === ti ? "bg-primary/15 text-primary border-primary/40" : "border-border hover:bg-secondary"}`}>
-            {ti === "all" ? t("all") : ti}
+            {ti === "all" ? t("all") : tv(ti)}
           </button>
         ))}
       </div>
@@ -76,7 +76,7 @@ export default function NFT() {
             <div className="p-2">
               <div className="text-xs font-head font-bold truncate">#{String(it.token_id).padStart(3, "0")}</div>
               <div className="flex items-center justify-between">
-                <span className={`text-[10px] px-1.5 py-0.5 rounded border ${tierColor[it.tier]}`}>{it.tier}</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded border ${tierColor[it.tier]}`}>{tv(it.tier)}</span>
                 <span className="mono text-[10px] text-muted-foreground">{it.floor_price_eth}Ξ</span>
               </div>
             </div>
@@ -85,9 +85,9 @@ export default function NFT() {
       </div>
 
       <div className="flex items-center justify-center gap-3 mt-6">
-        <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="px-4 py-2 rounded-lg border border-border disabled:opacity-40 hover:bg-secondary">Prev</button>
+        <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="px-4 py-2 rounded-lg border border-border disabled:opacity-40 hover:bg-secondary">{t("prev")}</button>
         <span className="text-sm mono">{page} / {totalPages}</span>
-        <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="px-4 py-2 rounded-lg border border-border disabled:opacity-40 hover:bg-secondary">Next</button>
+        <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="px-4 py-2 rounded-lg border border-border disabled:opacity-40 hover:bg-secondary">{t("next")}</button>
       </div>
 
       {selected && (
@@ -103,7 +103,7 @@ export default function NFT() {
                 </div>
                 <button onClick={() => setSelected(null)} className="p-1.5 rounded-md hover:bg-secondary" data-testid="nft-modal-close"><X size={18} /></button>
               </div>
-              <span className={`inline-block mt-2 text-xs px-2 py-0.5 rounded-full border ${tierColor[selected.tier]}`}>{selected.tier}</span>
+              <span className={`inline-block mt-2 text-xs px-2 py-0.5 rounded-full border ${tierColor[selected.tier]}`}>{tv(selected.tier)}</span>
               <p className="text-sm text-slate-300 leading-relaxed mt-4">{selected.story}</p>
               <div className="grid grid-cols-2 gap-3 mt-5 text-sm">
                 {selected.traits && Object.entries(selected.traits).map(([k, v]) => (
@@ -117,7 +117,7 @@ export default function NFT() {
                   <div className="font-medium mono">{selected.floor_price_eth} ETH</div>
                 </div>
                 <div className="p-2 rounded-lg bg-secondary/40">
-                  <div className="text-[10px] uppercase text-muted-foreground">Rarity</div>
+                  <div className="text-[10px] uppercase text-muted-foreground">{t("rarity")}</div>
                   <div className="font-medium mono">{selected.rarity_score}</div>
                 </div>
               </div>

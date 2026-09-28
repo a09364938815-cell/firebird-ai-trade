@@ -7,7 +7,7 @@ import { useI18n } from "@/i18n";
 import { PageTitle, Panel, Stat, fmt, pnlColor } from "@/components/common";
 
 export default function AutoTrade() {
-  const { t } = useI18n();
+  const { t, tv } = useI18n();
   const qc = useQueryClient();
   const [on, setOn] = useState(false);
   const [log, setLog] = useState([]);
@@ -50,8 +50,8 @@ export default function AutoTrade() {
           toast.error(data.halt_reason);
         }
         const events = [
-          ...(data.opened || []).map((o) => `BUY ${o.symbol} ${o.timeframe} · score ${o.score} · ${o.leverage}x`),
-          ...(data.closed || []).map((c) => `${c.reason} ${c.symbol} · $${c.pnl}`),
+          ...(data.opened || []).map((o) => `${tv("BUY")} ${o.symbol} ${o.timeframe} · ${t("score")} ${o.score} · ${o.leverage}x`),
+          ...(data.closed || []).map((c) => `${tv(c.reason)} ${c.symbol} · $${c.pnl}`),
         ];
         if (events.length) setLog((l) => [...events.map((e) => ({ e, t: new Date().toLocaleTimeString() })), ...l].slice(0, 20));
         qc.invalidateQueries({ queryKey: ["portfolio"] });
@@ -81,12 +81,12 @@ export default function AutoTrade() {
       <PageTitle title={t("nav_autotrade")} subtitle={t("disclaimer")} />
 
       <div className="glass rounded-xl p-4 mb-6 border border-primary/20 text-xs text-muted-foreground flex flex-wrap gap-x-6 gap-y-1" data-testid="rules-badges">
-        <span>⚖️ Reward:Risk <b className="text-gold">2:1</b> (stop required)</span>
-        <span>🤖 Max <b className="text-gold">2</b> concurrent auto-trades</span>
-        <span>⚡ Auto leverage ≤ <b className="text-gold">10x</b> · Manual ≤ 50x</span>
-        <span>🛑 Circuit-breaker at <b className="text-danger">20%</b> drawdown</span>
-        <span>✋ Halt after <b className="text-danger">5</b> losses</span>
-        <span>📈 Scans all coins & timeframes</span>
+        <span>⚖️ {t("rule_rr")}</span>
+        <span>🤖 {t("rule_max_concurrent")}</span>
+        <span>⚡ {t("rule_leverage")}</span>
+        <span>🛑 {t("rule_circuit")}</span>
+        <span>✋ {t("rule_halt")}</span>
+        <span>📈 {t("rule_scan")}</span>
       </div>
 
       {halt && (
@@ -94,7 +94,7 @@ export default function AutoTrade() {
           <div className="text-sm text-danger">🛑 {halt}</div>
           <button onClick={resume} data-testid="resume-button"
             className="px-4 py-2 rounded-lg font-semibold border border-gold/40 text-gold hover:bg-gold/10">
-            Re-authorize Bot
+            {t("reauthorize_bot")}
           </button>
         </div>
       )}
@@ -103,7 +103,7 @@ export default function AutoTrade() {
         <Stat label={t("total_value")} value={`$${fmt(p?.total_value ?? 100)}`} accent="fire-text" />
         <Stat label={t("cash")} value={`$${fmt(p?.cash ?? 100)}`} />
         <Stat label={t("unrealized_pnl")} value={`$${fmt(p?.unrealized_pnl ?? 0)}`} accent={pnlColor(p?.unrealized_pnl ?? 0)} />
-        <Stat label="Open" value={p?.positions?.length ?? 0} />
+        <Stat label={t("open_label")} value={p?.positions?.length ?? 0} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -114,7 +114,7 @@ export default function AutoTrade() {
             </div>
             <div className="font-head font-bold text-lg mb-1">{on ? t("auto_trade_on") : t("auto_trade_off")}</div>
             <p className="text-sm text-muted-foreground mb-6 max-w-xs">
-              The bot scans all coins across 15m / 1h / 4h, enters the best signal (2:1 reward:risk, stop required), and manages positions with trailing take-profit in demo mode.
+              {t("bot_description")}
             </p>
             <button onClick={toggle} data-testid="auto-trade-toggle-button"
               className={`px-6 py-3 rounded-xl font-semibold ${on ? "bg-destructive/20 text-danger border border-destructive/40" : "fire-btn"}`}>
@@ -123,10 +123,10 @@ export default function AutoTrade() {
           </div>
         </Panel>
 
-        <Panel title="Activity Log" testid="autotrade-log">
+        <Panel title={t("activity_log")} testid="autotrade-log">
           {log.length === 0 ? (
             <div className="text-sm text-muted-foreground py-8 text-center">
-              {on ? "Waiting for signals…" : "Enable auto-trade to start"}
+              {on ? t("waiting_signals") : t("enable_to_start")}
             </div>
           ) : (
             <div className="space-y-2 max-h-72 overflow-y-auto">

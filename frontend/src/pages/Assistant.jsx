@@ -35,7 +35,7 @@ export default function Assistant() {
       setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail));
-      setMessages((m) => [...m, { role: "assistant", content: "Sorry, I couldn't respond right now." }]);
+      setMessages((m) => [...m, { role: "assistant", content: t("ai_error") }]);
     } finally {
       setBusy(false);
     }
@@ -58,11 +58,11 @@ export default function Assistant() {
     <div>
       <PageTitle title={t("nav_assistant")} subtitle="GPT-5.6 Firebird AI Core" />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Panel title={<span className="flex items-center gap-2"><Sparkles size={18} className="text-gold" /> Chat</span>} className="lg:col-span-2 flex flex-col" testid="ai-chat">
+        <Panel title={<span className="flex items-center gap-2"><Sparkles size={18} className="text-gold" /> {t("chat")}</span>} className="lg:col-span-2 flex flex-col" testid="ai-chat">
           <div className="flex-1 min-h-[360px] max-h-[460px] overflow-y-auto space-y-3 mb-4 pr-1">
             {messages.length === 0 && (
               <div className="text-sm text-muted-foreground text-center py-16">
-                Ask about a coin, timeframe, or strategy. Nothing is financial advice.
+                {t("ai_empty")}
               </div>
             )}
             {messages.map((m, i) => (
@@ -72,7 +72,7 @@ export default function Assistant() {
                 </div>
               </div>
             ))}
-            {busy && <div className="text-xs text-muted-foreground">Firebird AI is thinking…</div>}
+            {busy && <div className="text-xs text-muted-foreground">{t("ai_thinking")}</div>}
             <div ref={endRef} />
           </div>
           <div className="flex gap-2">
@@ -87,7 +87,7 @@ export default function Assistant() {
         </Panel>
 
         <Panel title={<span className="flex items-center gap-2"><Target size={18} className="text-primary" /> {t("score_coin")}</span>} testid="ai-score">
-          <label className="text-xs text-muted-foreground">Any coin symbol</label>
+          <label className="text-xs text-muted-foreground">{t("any_coin_symbol")}</label>
           <input
             value={symbol}
             onChange={(e) => setSymbol(e.target.value.toUpperCase())}
@@ -108,7 +108,7 @@ export default function Assistant() {
             ))}
           </div>
           <button onClick={runScore} disabled={scoring} data-testid="run-score-button" className="fire-btn w-full py-2.5 rounded-lg font-semibold mb-4 disabled:opacity-60">
-            {scoring ? "Analyzing…" : t("score_coin")}
+            {scoring ? t("analyzing") : t("score_coin")}
           </button>
           {score && (
             <div className="space-y-3" data-testid="score-result">
@@ -116,9 +116,9 @@ export default function Assistant() {
                 <div className="font-head font-extrabold text-4xl fire-text">{score.score}</div>
                 <div className="text-sm text-gold">{score.rating}</div>
               </div>
-              <ScoreRow label="Entry" value={score.entry_strategy} />
-              <ScoreRow label="Exit" value={score.exit_strategy} />
-              <ScoreRow label="Risk" value={score.risk} />
+              <ScoreRow label={t("entry_strategy")} value={score.entry_strategy} />
+              <ScoreRow label={t("exit_strategy")} value={score.exit_strategy} />
+              <ScoreRow label={t("risk")} value={score.risk} />
               <p className="text-xs text-muted-foreground border-t border-border/50 pt-2">{score.summary}</p>
             </div>
           )}

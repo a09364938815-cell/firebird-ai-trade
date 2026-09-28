@@ -8,7 +8,7 @@ import { PageTitle, Panel, fmt, pnlColor } from "@/components/common";
 const SYMBOLS = ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "AVAX", "LINK", "DOT", "MATIC"];
 
 export default function ManualTrade() {
-  const { t } = useI18n();
+  const { t, tv } = useI18n();
   const qc = useQueryClient();
   const [symbol, setSymbol] = useState("BTC");
   const [amount, setAmount] = useState(25);
@@ -70,7 +70,7 @@ export default function ManualTrade() {
             data-testid="manual-amount-input"
             className="w-full mt-1 mb-3 px-4 py-2.5 rounded-lg bg-input border border-border focus:border-primary outline-none mono" />
           <label className="text-xs text-muted-foreground flex items-center justify-between">
-            <span>Leverage</span>
+            <span>{t("leverage")}</span>
             <span className={`mono ${leverage >= 10 ? "text-danger" : "text-gold"}`}>{leverage}x</span>
           </label>
           <input type="range" min={1} max={50} step={1} value={leverage} onChange={(e) => setLeverage(Number(e.target.value))}
@@ -78,7 +78,7 @@ export default function ManualTrade() {
             className="w-full mt-1 mb-1 accent-orange-500" />
           {leverage >= 10 && (
             <div className="text-[11px] text-danger mb-3" data-testid="leverage-warning">
-              ⚠️ High leverage — you can lose your full margin (liquidation).
+              ⚠️ {t("high_leverage_warning")}
             </div>
           )}
           <div className="grid grid-cols-2 gap-3 mt-3">
@@ -102,7 +102,7 @@ export default function ManualTrade() {
                 <div key={p.id} className="flex items-center justify-between flex-wrap gap-2 p-3 rounded-lg bg-secondary/40" data-testid={`position-${p.symbol}`}>
                   <div>
                     <span className="font-head font-bold">{p.symbol}</span>
-                    <span className="text-xs text-muted-foreground ml-2">{p.side} · {p.source}</span>
+                    <span className="text-xs text-muted-foreground ml-2">{tv(p.side)} · {tv(p.source)}</span>
                   </div>
                   <div className="flex items-center flex-wrap gap-2 sm:gap-5 text-xs sm:text-sm">
                     <span className="mono">{t("entry")} ${fmt(p.entry_price)}</span>

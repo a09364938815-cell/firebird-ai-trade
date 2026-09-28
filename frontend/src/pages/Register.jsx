@@ -21,7 +21,7 @@ export default function Register() {
     try {
       const { data } = await api.post("/auth/register", { name: name || "Trader", email, password });
       setUser(data);
-      toast.success("Account created — $100 demo ready");
+      toast.success(t("account_created"));
       navigate("/");
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);

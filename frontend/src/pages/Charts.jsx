@@ -9,7 +9,7 @@ const SYMBOLS = ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "AVAX", "LINK"];
 const TFS = ["1m", "5m", "15m", "1h", "4h", "1d"];
 
 export default function Charts() {
-  const { t } = useI18n();
+  const { t, tv } = useI18n();
   const [symbol, setSymbol] = useState("BTC");
   const [tf, setTf] = useState("1h");
 
@@ -63,7 +63,7 @@ export default function Charts() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <Panel className="lg:col-span-3" testid="chart-panel"
           title={<span className="font-head">{symbol}/USDT · <span className="mono text-gold">${fmt(last)}</span></span>}
-          right={klines.data?.simulated && <span className="text-[10px] text-muted-foreground">simulated feed</span>}
+          right={klines.data?.simulated && <span className="text-[10px] text-muted-foreground">{t("simulated_feed")}</span>}
         >
           <CandleChart candles={candles} />
         </Panel>
@@ -72,16 +72,16 @@ export default function Charts() {
           {sig ? (
             <div className="space-y-3">
               <div className={`inline-block text-sm px-3 py-1 rounded-full border ${actionColor(sig.action)}`}>
-                {sig.action} · {sig.score}/100
+                {tv(sig.action)} · {sig.score}/100
               </div>
               <Row label="RSI" value={sig.rsi} />
               <Row label="SMA9" value={`$${fmt(sig.sma_fast)}`} />
               <Row label="SMA21" value={`$${fmt(sig.sma_slow)}`} />
-              <Row label="Momentum" value={`${fmt(sig.momentum)}%`} cls={pnlColor(sig.momentum)} />
+              <Row label={t("momentum")} value={`${fmt(sig.momentum)}%`} cls={pnlColor(sig.momentum)} />
               <p className="text-xs text-muted-foreground pt-2 border-t border-border/50">{sig.reason}</p>
             </div>
           ) : (
-            <div className="text-sm text-muted-foreground">Loading…</div>
+            <div className="text-sm text-muted-foreground">{t("loading")}</div>
           )}
         </Panel>
       </div>

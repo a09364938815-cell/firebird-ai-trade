@@ -73,7 +73,7 @@ export default function Layout() {
           }
         >
           <Crown size={18} />
-          <span>Owner Console</span>
+          <span>{t("owner_console")}</span>
         </NavLink>
       )}
     </nav>

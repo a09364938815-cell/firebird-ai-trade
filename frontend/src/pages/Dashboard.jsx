@@ -6,7 +6,7 @@ import { useI18n } from "@/i18n";
 import { Panel, Stat, PageTitle, pnlColor, fmt, actionColor } from "@/components/common";
 
 export default function Dashboard() {
-  const { t } = useI18n();
+  const { t, tv } = useI18n();
   const portfolio = useQuery({
     queryKey: ["portfolio"],
     queryFn: () => api.get("/trading/portfolio").then((r) => r.data),
@@ -98,7 +98,7 @@ export default function Dashboard() {
                 </div>
                 <div className="text-right">
                   <div className={`text-xs font-semibold ${w.pressure === "accumulation" ? "text-success" : "text-danger"}`}>
-                    {w.pressure}
+                    {tv(w.pressure)}
                   </div>
                   <div className="mono text-xs text-muted-foreground">{w.intensity}/100</div>
                 </div>

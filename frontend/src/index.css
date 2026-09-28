@@ -61,7 +61,24 @@ h1, h2, h3, h4, .font-head {
 
 .font-mono, .mono {
   font-family: "JetBrains Mono", monospace;
+  direction: ltr;
+  unicode-bidi: isolate;
 }
+
+/* Numbers, prices, percentages must always render LTR with English digits */
+.num, [data-num] {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+}
+
+/* RTL: keep table headers/cells aligned to the reading start edge */
+[dir="rtl"] table th,
+[dir="rtl"] table td {
+  text-align: right;
+}
+[dir="rtl"] .text-left { text-align: right; }
+[dir="rtl"] .text-right { text-align: left; }
 
 .font-fa, .font-fa h1, .font-fa h2, .font-fa h3, .font-fa h4 {
   font-family: "Vazirmatn", "Inter", sans-serif;
