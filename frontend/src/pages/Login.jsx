@@ -10,8 +10,8 @@ export default function Login() {
   const { t } = useI18n();
   const { setUser } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("admin@firebird.ai");
-  const [password, setPassword] = useState("Firebird#2026");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const submit = async (e) => {
