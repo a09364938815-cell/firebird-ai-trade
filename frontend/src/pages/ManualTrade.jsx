@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Search, Star, X, Plus, Wifi, Wallet, TrendingUp, TrendingDown, Minus, Target, Shield, ChevronDown, Bot, Zap } from "lucide-react";
@@ -6,6 +6,7 @@ import api, { formatApiErrorDetail } from "@/lib/api";
 import { useI18n } from "@/i18n";
 import { PageTitle, Panel, fmt, pnlColor } from "@/components/common";
 import { TradingChart } from "@/components/TradingChart";
+import { MoneyDepth } from "@/components/MoneyDepth";
 
 const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h"];
 
@@ -21,6 +22,12 @@ export default function ManualTrade() {
   const [signalsOpen, setSignalsOpen] = useState(true);
   const [sigQuery, setSigQuery] = useState("");
   const [suggested, setSuggested] = useState(null);
+  const [sigTf, setSigTf] = useState("15m");
+  const [sigResults, setSigResults] = useState([]);
+  const [sigShow, setSigShow] = useState(false);
+  const [customSymbol, setCustomSymbol] = useState(null);
+  const [showDepth, setShowDepth] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1024);
+  const [showZones, setShowZones] = useState(true);
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
@@ -46,10 +53,10 @@ export default function ManualTrade() {
     refetchInterval: 30000,
   });
 
-  // Auto Signals: top movers from the AI Core for the current timeframe (backend caches 60s).
+  // Auto Signals: top movers from the AI Core for the selected Auto-Signals timeframe (backend caches 60s).
   const signals = useQuery({
-    queryKey: ["auto-signals", tf],
-    queryFn: () => api.get(`/market/signals?interval=${tf}`).then((r) => r.data),
+    queryKey: ["auto-signals", sigTf],
+    queryFn: () => api.get(`/market/signals?interval=${sigTf}`).then((r) => r.data),
     refetchInterval: 60000,
     staleTime: 60000,
   });
@@ -59,11 +66,20 @@ export default function ManualTrade() {
     return (active.length ? active : rows).slice(0, 3);
   }, [signals.data]);
 
+  // On-demand analysis for a custom token typed into the Auto Signals search (not saved to the list).
+  const customAnalysis = useQuery({
+    queryKey: ["custom-analysis", customSymbol, sigTf],
+    queryFn: () => api.get(`/market/analysis?symbol=${customSymbol}&interval=${sigTf}`).then((r) => r.data),
+    enabled: !!customSymbol,
+    refetchInterval: 60000,
+  });
+
   const pickSignal = (s) => { setSymbol(s.symbol); setSuggested(s.symbol); };
+  const pickCustom = (sym) => { setCustomSymbol(sym.toUpperCase()); setSigResults([]); setSigShow(false); setSigQuery(""); };
   const quickAnalyze = (e) => {
     e.preventDefault();
     const q = sigQuery.trim().toUpperCase().replace(/USDT$/, "");
-    if (q) { setSymbol(q); setSuggested(q); setSigQuery(""); }
+    if (q) pickCustom(q);
   };
 
   // Fallback price (from coins snapshot) if WS has not delivered yet
@@ -122,32 +138,40 @@ export default function ManualTrade() {
     })();
   }, []);
 
-  // Debounced coin search: local (Binance universe) first, server fallback
+  // Reusable coin search: local (Binance universe) first, server fallback.
+  const searchCoins = useCallback(async (q) => {
+    const uni = universeRef.current;
+    if (uni.length) {
+      const starts = uni.filter((s) => s.startsWith(q));
+      const contains = uni.filter((s) => s.includes(q) && !s.startsWith(q));
+      const local = [...starts, ...contains].slice(0, 30).map((s) => ({ symbol: s, name: s }));
+      if (local.length) return local;
+    }
+    try { const { data } = await api.get(`/market/search?q=${encodeURIComponent(q)}`); return data.results || []; }
+    catch { return []; }
+  }, []);
+
+  // Debounced coin search for the order-form symbol picker
   useEffect(() => {
     const q = query.trim().toUpperCase();
     if (!q) { setResults([]); return; }
     const tmo = setTimeout(async () => {
-      const uni = universeRef.current;
-      let local = [];
-      if (uni.length) {
-        const starts = uni.filter((s) => s.startsWith(q));
-        const contains = uni.filter((s) => s.includes(q) && !s.startsWith(q));
-        local = [...starts, ...contains].slice(0, 30).map((s) => ({ symbol: s, name: s }));
-      }
-      if (local.length) {
-        setResults(local);
-        setShowResults(true);
-        return;
-      }
-      // Universe unavailable (e.g. browser blocked from Binance) → server search fallback
-      try {
-        const { data } = await api.get(`/market/search?q=${encodeURIComponent(q)}`);
-        setResults(data.results || []);
-        setShowResults(true);
-      } catch { setResults([]); }
+      const r = await searchCoins(q);
+      setResults(r); setShowResults(true);
     }, 250);
     return () => clearTimeout(tmo);
-  }, [query]);
+  }, [query, searchCoins]);
+
+  // Debounced coin search for the Auto Signals custom-token picker
+  useEffect(() => {
+    const q = sigQuery.trim().toUpperCase();
+    if (!q) { setSigResults([]); return; }
+    const tmo = setTimeout(async () => {
+      const r = await searchCoins(q);
+      setSigResults(r); setSigShow(true);
+    }, 250);
+    return () => clearTimeout(tmo);
+  }, [sigQuery, searchCoins]);
 
   // Real-time price via Binance WebSocket for the selected symbol (no polling)
   useEffect(() => {
@@ -348,19 +372,84 @@ export default function ManualTrade() {
             </button>
           </div>
           <div className={`${signalsOpen ? "" : "hidden"} lg:block`}>
-            {/* Custom coin quick-analyze */}
-            <form onSubmit={quickAnalyze} className="flex items-center gap-2 mb-3">
-              <div className="flex items-center gap-2 flex-1 px-3 py-2 rounded-lg bg-input border border-border focus-within:border-primary">
-                <Search size={13} className="text-muted-foreground shrink-0" />
-                <input value={sigQuery} onChange={(e) => setSigQuery(e.target.value)}
-                  placeholder="Analyze any coin…" data-testid="auto-signals-search"
-                  className="w-full bg-transparent outline-none text-sm mono" />
+            {/* Timeframe selector for Auto Signals */}
+            <div className="flex gap-1 mb-3" data-testid="auto-signals-tf">
+              {TIMEFRAMES.map((f) => (
+                <button key={f} onClick={() => setSigTf(f)} data-testid={`auto-signals-tf-${f}`}
+                  className={`flex-1 py-1 rounded-md text-[11px] mono border ${sigTf === f ? "bg-primary/15 text-primary border-primary/40" : "border-border hover:bg-secondary"}`}>
+                  {f}
+                </button>
+              ))}
+            </div>
+
+            {/* Add any token → dropdown → on-demand analysis */}
+            <div className="relative mb-3">
+              <form onSubmit={quickAnalyze} className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-1 px-3 py-2 rounded-lg bg-input border border-border focus-within:border-primary">
+                  <Search size={13} className="text-muted-foreground shrink-0" />
+                  <input value={sigQuery} onChange={(e) => setSigQuery(e.target.value)}
+                    onFocus={() => sigQuery && setSigShow(true)}
+                    placeholder="Add any token (e.g., ARB, OP, TIA)" data-testid="auto-signals-search"
+                    className="w-full bg-transparent outline-none text-sm mono" />
+                </div>
+                <button type="submit" data-testid="auto-signals-analyze"
+                  className="px-3 py-2 rounded-lg text-xs font-semibold bg-gold/15 text-gold border border-gold/40 hover:bg-gold/25">
+                  Analyze
+                </button>
+              </form>
+              {sigShow && sigResults.length > 0 && (
+                <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto glass rounded-lg border border-border" data-testid="auto-signals-results">
+                  {sigResults.map((r) => (
+                    <button key={r.symbol} onClick={() => pickCustom(r.symbol)} data-testid={`auto-signals-result-${r.symbol}`}
+                      className="w-full flex items-center justify-between px-3 py-2 hover:bg-secondary text-start">
+                      <span className="text-sm font-medium">{r.symbol}</span>
+                      <span className="text-[11px] text-muted-foreground truncate ml-2">{r.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Custom token analysis card (on-demand, not saved) */}
+            {customSymbol && (
+              <div className="mb-3 p-3 rounded-lg border border-gold/40 bg-gold/5" data-testid="custom-signal-card">
+                {(() => {
+                  const cd = customAnalysis.data;
+                  const d = DIR[cd?.action || "HOLD"] || DIR.HOLD;
+                  return (
+                    <>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-head font-bold text-sm">{customSymbol}/USDT</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground mono">{sigTf}</span>
+                          <button onClick={() => setCustomSymbol(null)} data-testid="custom-signal-remove" className="p-0.5 rounded hover:bg-destructive/20 hover:text-danger"><X size={12} /></button>
+                        </div>
+                      </div>
+                      {!cd ? (
+                        <div className="text-[11px] text-muted-foreground py-2">Analyzing {customSymbol} on {sigTf}…</div>
+                      ) : (
+                        <button onClick={() => pickSignal({ symbol: customSymbol })} className="w-full text-start" data-testid="custom-signal-load">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className={`text-[11px] px-2 py-0.5 rounded-md border font-semibold flex items-center gap-1 ${d.cls}`}><d.Icon size={11} /> {d.label}</span>
+                            <span className="mono text-[11px] text-muted-foreground">{cd.confidence ?? 0}/100</span>
+                          </div>
+                          <div className="w-full h-1.5 rounded-full bg-secondary overflow-hidden mb-1.5">
+                            <div className="h-full rounded-full bg-gradient-to-r from-gold to-primary" style={{ width: `${cd.confidence ?? 0}%` }} />
+                          </div>
+                          <div className="text-[11px] text-muted-foreground mb-1.5">{(cd.reason || "").split(";")[0]}</div>
+                          <div className="grid grid-cols-3 gap-1 text-[10px] mono">
+                            <div><span className="text-muted-foreground">Entry </span>${fmt(cd.entry)}</div>
+                            <div className="text-success"><span className="text-muted-foreground">TP </span>${fmt(cd.take_profit)}</div>
+                            <div className="text-danger"><span className="text-muted-foreground">SL </span>${fmt(cd.stop_loss)}</div>
+                          </div>
+                          <div className="text-[10px] text-primary mt-1.5">Tap to load on chart →</div>
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
-              <button type="submit" data-testid="auto-signals-analyze"
-                className="px-3 py-2 rounded-lg text-xs font-semibold bg-gold/15 text-gold border border-gold/40 hover:bg-gold/25">
-                Analyze
-              </button>
-            </form>
+            )}
 
             {topSignals.length === 0 ? (
               <div className="text-sm text-muted-foreground py-4 text-center" data-testid="auto-signals-empty">
@@ -401,18 +490,33 @@ export default function ManualTrade() {
             <div className="flex items-center justify-between w-full gap-3 flex-wrap">
               <span className="flex items-center gap-2"><span className="font-head font-bold">{symbol}/USDT</span>
                 <span className="mono text-sm text-muted-foreground">${fmt(price)}</span></span>
-              <div className="flex gap-1" data-testid="chart-timeframes">
-                {TIMEFRAMES.map((f) => (
-                  <button key={f} onClick={() => setTf(f)} data-testid={`chart-tf-${f}`}
-                    className={`px-2.5 py-1 rounded-md text-xs mono border ${tf === f ? "bg-gold/15 text-gold border-gold/40" : "border-border hover:bg-secondary"}`}>
-                    {f}
-                  </button>
-                ))}
+              <div className="flex items-center gap-2 flex-wrap">
+                <button onClick={() => setShowDepth((v) => !v)} data-testid="toggle-money-depth"
+                  className={`px-2 py-1 rounded-md text-[11px] border ${showDepth ? "bg-gold/15 text-gold border-gold/40" : "border-border text-muted-foreground hover:bg-secondary"}`}>
+                  Money Depth
+                </button>
+                <button onClick={() => setShowZones((v) => !v)} data-testid="toggle-sr-zones"
+                  className={`px-2 py-1 rounded-md text-[11px] border ${showZones ? "bg-primary/15 text-primary border-primary/40" : "border-border text-muted-foreground hover:bg-secondary"}`}>
+                  S/R Zones
+                </button>
+                <div className="flex gap-1" data-testid="chart-timeframes">
+                  {TIMEFRAMES.map((f) => (
+                    <button key={f} onClick={() => setTf(f)} data-testid={`chart-tf-${f}`}
+                      className={`px-2.5 py-1 rounded-md text-xs mono border ${tf === f ? "bg-gold/15 text-gold border-gold/40" : "border-border hover:bg-secondary"}`}>
+                      {f}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           }
           className="lg:col-span-6" testid="manual-chart-panel">
-          <TradingChart symbol={symbol} interval={tf} levels={levels} />
+          <div className="flex gap-2">
+            {showDepth && <MoneyDepth symbol={symbol} interval={tf} currentPrice={price} />}
+            <div className="flex-1 min-w-0">
+              <TradingChart symbol={symbol} interval={tf} levels={levels} showZones={showZones} />
+            </div>
+          </div>
         </Panel>
 
         {/* Bot Analysis — next to the chart on desktop, below (collapsible) on mobile */}
