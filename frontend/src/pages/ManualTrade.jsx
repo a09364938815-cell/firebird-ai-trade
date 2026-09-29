@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Search, Star, X, Plus, Wifi, Wallet } from "lucide-react";
+import { Search, Star, X, Plus, Wifi, Wallet, TrendingUp, TrendingDown, Minus, Target, Shield, ChevronDown, Bot } from "lucide-react";
 import api, { formatApiErrorDetail } from "@/lib/api";
 import { useI18n } from "@/i18n";
 import { PageTitle, Panel, fmt, pnlColor } from "@/components/common";
@@ -17,6 +17,7 @@ export default function ManualTrade() {
   const [amount, setAmount] = useState(25);
   const [leverage, setLeverage] = useState(1);
   const [busy, setBusy] = useState(false);
+  const [analysisOpen, setAnalysisOpen] = useState(true);
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
@@ -35,10 +36,43 @@ export default function ManualTrade() {
   const watchlist = useQuery({ queryKey: ["watchlist"], queryFn: () => api.get("/market/watchlist").then((r) => r.data.symbols) });
   const wl = watchlist.data || [];
 
+  // Firebird AI Core analysis for the selected symbol + timeframe (direction, confidence, Entry/TP/SL).
+  const analysis = useQuery({
+    queryKey: ["analysis", symbol, tf],
+    queryFn: () => api.get(`/market/analysis?symbol=${symbol}&interval=${tf}`).then((r) => r.data),
+    refetchInterval: 30000,
+  });
+
   // Fallback price (from coins snapshot) if WS has not delivered yet
   const fallbackPrice = coins.data?.find((c) => c.symbol === symbol)?.price;
   const price = livePrice ?? fallbackPrice;
   const freeBalance = portfolio.data?.cash ?? 0;
+
+  // If the user already holds this symbol, draw the lines from the live position; else from the AI signal.
+  const openPos = (portfolio.data?.positions || []).find((p) => p.symbol === symbol);
+  const levels = useMemo(() => {
+    if (openPos) {
+      const e = openPos.entry_price;
+      const tpP = openPos.take_profit_pct ?? 6;
+      const slP = openPos.stop_loss_pct ?? 3;
+      const long = openPos.side === "BUY";
+      return {
+        entry: e,
+        take_profit: long ? e * (1 + tpP / 100) : e * (1 - tpP / 100),
+        stop_loss: long ? e * (1 - slP / 100) : e * (1 + slP / 100),
+        source: "position",
+      };
+    }
+    if (analysis.data && analysis.data.entry) {
+      return {
+        entry: analysis.data.entry,
+        take_profit: analysis.data.take_profit,
+        stop_loss: analysis.data.stop_loss,
+        source: "signal",
+      };
+    }
+    return null;
+  }, [openPos, analysis.data]);
 
   // Load the full tradeable universe from Binance in the browser (server may be geo-blocked).
   // Cached in localStorage for 24h. Falls back to the server search if the browser is also blocked.
@@ -152,8 +186,8 @@ export default function ManualTrade() {
   return (
     <div>
       <PageTitle title={t("nav_manual")} subtitle={t("disclaimer")} />
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Panel title={t("open_position")} testid="manual-trade-panel">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <Panel title={t("open_position")} testid="manual-trade-panel" className="lg:col-span-3">
           {/* Searchable coin list */}
           <label className="text-xs text-muted-foreground">{t("symbol")}</label>
           <div className="relative mt-1 mb-2">
@@ -275,9 +309,27 @@ export default function ManualTrade() {
               </div>
             </div>
           }
-          className="lg:col-span-2" testid="manual-chart-panel">
-          <TradingChart symbol={symbol} interval={tf} />
+          className="lg:col-span-6" testid="manual-chart-panel">
+          <TradingChart symbol={symbol} interval={tf} levels={levels} />
         </Panel>
+
+        {/* Bot Analysis — next to the chart on desktop, below (collapsible) on mobile */}
+        <div className="lg:col-span-3" data-testid="bot-analysis-panel">
+          <div className="glass card-hover rounded-2xl p-5 md:p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-head font-semibold text-lg flex items-center gap-2">
+                <Bot size={18} className="text-primary" /> Bot Analysis
+              </h3>
+              <button onClick={() => setAnalysisOpen((v) => !v)} data-testid="bot-analysis-toggle"
+                className="lg:hidden p-1 rounded hover:bg-secondary">
+                <ChevronDown size={18} className={`transition-transform ${analysisOpen ? "rotate-180" : ""}`} />
+              </button>
+            </div>
+            <div className={`${analysisOpen ? "" : "hidden"} lg:block`}>
+              <BotAnalysis symbol={symbol} tf={tf} data={analysis.data} levels={levels} hasPosition={!!openPos} />
+            </div>
+          </div>
+        </div>
       </div>
 
       <Panel title={t("nav_positions")} className="mt-6" testid="manual-positions">
@@ -305,6 +357,86 @@ export default function ManualTrade() {
           </div>
         )}
       </Panel>
+    </div>
+  );
+}
+
+
+const DIR = {
+  BUY: { label: "BUY", cls: "bg-success/15 text-success border-success/40", Icon: TrendingUp },
+  SELL: { label: "SELL", cls: "bg-destructive/15 text-danger border-destructive/40", Icon: TrendingDown },
+  HOLD: { label: "HOLD", cls: "bg-secondary text-muted-foreground border-border", Icon: Minus },
+};
+
+function BotAnalysis({ symbol, tf, data, levels, hasPosition }) {
+  if (!data) {
+    return <div className="text-sm text-muted-foreground py-6 text-center" data-testid="bot-analysis-loading">Analyzing {symbol} on {tf}…</div>;
+  }
+  const dir = DIR[data.action] || DIR.HOLD;
+  const conf = data.confidence ?? 0;
+  const reasons = (data.reason || "").split(";").map((r) => r.trim()).filter(Boolean);
+  return (
+    <div className="space-y-4">
+      {/* Direction + confidence */}
+      <div className={`flex items-center justify-between px-3 py-2.5 rounded-lg border ${dir.cls}`} data-testid="bot-direction">
+        <span className="flex items-center gap-2 font-head font-bold text-lg">
+          <dir.Icon size={18} /> {dir.label}
+        </span>
+        <span className="text-xs text-muted-foreground">{symbol} · {tf}</span>
+      </div>
+      <div>
+        <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+          <span>Confidence</span>
+          <span className="mono text-foreground" data-testid="bot-confidence">{conf}/100</span>
+        </div>
+        <div className="w-full h-2 rounded-full bg-secondary overflow-hidden">
+          <div className="h-full rounded-full bg-gradient-to-r from-gold to-primary transition-all" style={{ width: `${conf}%` }} />
+        </div>
+      </div>
+
+      {/* Reasoning */}
+      <div>
+        <div className="text-xs text-muted-foreground mb-1.5">Reasoning</div>
+        <ul className="space-y-1.5" data-testid="bot-reasoning">
+          {reasons.map((r, i) => (
+            <li key={i} className="text-xs flex items-start gap-1.5">
+              <span className="mt-1 w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+              <span>{r}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Entry / TP / SL */}
+      {levels && (
+        <div className="space-y-2" data-testid="bot-levels">
+          <LevelRow color="#f7931a" Icon={Target} label="Entry" value={levels.entry} />
+          <LevelRow color="#26a17b" Icon={Target} label="Take Profit" value={levels.take_profit} />
+          <LevelRow color="#e5484d" Icon={Shield} label="Stop Loss" value={levels.stop_loss} />
+        </div>
+      )}
+
+      {/* Risk:Reward */}
+      <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-secondary/40 border border-border">
+        <span className="text-xs text-muted-foreground">Risk : Reward</span>
+        <span className="mono font-semibold text-gold" data-testid="bot-risk-reward">1 : {data.risk_reward ?? 2}</span>
+      </div>
+
+      <div className="text-[10px] text-muted-foreground text-center" data-testid="bot-levels-source">
+        {hasPosition ? "Levels live from your open position" : "Suggested levels · not financial advice"}
+      </div>
+    </div>
+  );
+}
+
+function LevelRow({ color, Icon, label, value }) {
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className="flex items-center gap-2 text-muted-foreground">
+        <span className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
+        <Icon size={13} style={{ color }} /> {label}
+      </span>
+      <span className="mono font-medium">${fmt(value)}</span>
     </div>
   );
 }

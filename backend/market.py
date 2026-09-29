@@ -1,6 +1,7 @@
 import time
 import math
 import random
+import os
 from typing import List
 
 import httpx
@@ -14,6 +15,8 @@ from auth import get_current_user
 market_router = APIRouter(prefix="/api/market", tags=["market"])
 
 BINANCE = "https://api.binance.com"
+
+MIN_STOP_LOSS_PCT = float(os.environ.get("MIN_STOP_LOSS_PCT", 2))
 
 COINS = [
     {"symbol": "BTC", "name": "Bitcoin"},
@@ -303,6 +306,41 @@ async def signals(interval: str = "1h"):
                     "interval": interval, **sig})
     out.sort(key=lambda x: x["score"], reverse=True)
     return out
+
+
+@market_router.get("/analysis")
+async def analysis(symbol: str = "BTC", interval: str = "1h", user: dict = Depends(get_current_user)):
+    """Firebird AI Core analysis for a single symbol + timeframe: direction,
+    confidence, reasoning and rule-consistent Entry/TP/SL (strict 2:1 R:R)."""
+    symbol = symbol.upper()
+    if interval not in INTERVAL_MAP:
+        interval = "1h"
+    data = await get_klines(symbol, interval, 120)
+    candles = data.get("candles", [])
+    sig = compute_signal(candles)
+    entry = float(candles[-1][4]) if candles else 0.0
+    action = sig["action"]
+    score = sig["score"]
+    confidence = max(0, min(100, round(abs(score - 50) * 2)))
+
+    sl_pct = max(MIN_STOP_LOSS_PCT, 3.0)
+    tp_pct = round(sl_pct * 2, 2)
+    if action == "SELL":
+        stop_loss = entry * (1 + sl_pct / 100)
+        take_profit = entry * (1 - tp_pct / 100)
+    else:  # BUY or HOLD (levels framed for a long bias)
+        stop_loss = entry * (1 - sl_pct / 100)
+        take_profit = entry * (1 + tp_pct / 100)
+
+    return {
+        "symbol": symbol, "interval": interval,
+        "action": action, "score": score, "confidence": confidence,
+        "reason": sig["reason"], "rsi": sig.get("rsi"), "momentum": sig.get("momentum"),
+        "entry": round(entry, 6), "stop_loss": round(stop_loss, 6),
+        "take_profit": round(take_profit, 6),
+        "sl_pct": sl_pct, "tp_pct": tp_pct, "risk_reward": round(tp_pct / sl_pct, 1),
+        "simulated": data.get("simulated", False),
+    }
 
 
 @market_router.get("/news")

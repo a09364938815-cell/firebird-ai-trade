@@ -42,8 +42,10 @@ async function loadHistory(symbol, interval) {
   } catch { return []; }
 }
 
-export function TradingChart({ symbol, interval, onFlow }) {
+export function TradingChart({ symbol, interval, levels, onFlow }) {
   const containerRef = useRef(null);
+  const candleSeriesRef = useRef(null);
+  const priceLinesRef = useRef([]);
   const [flow, setFlow] = useState(null);
 
   useEffect(() => {
@@ -65,6 +67,7 @@ export function TradingChart({ symbol, interval, onFlow }) {
     const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: UP, downColor: DOWN, borderVisible: false, wickUpColor: UP, wickDownColor: DOWN,
     });
+    candleSeriesRef.current = candleSeries;
 
     // Pane 1: Volume histogram (green/red).
     const volSeries = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "" }, 1);
@@ -123,17 +126,33 @@ export function TradingChart({ symbol, interval, onFlow }) {
 
     return () => {
       disposed = true;
+      candleSeriesRef.current = null;
+      priceLinesRef.current = [];
       try { ws && ws.close(); } catch {}
       chart.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, interval]);
 
+  // Draw / update Entry, TP, SL price lines whenever the analysis levels change.
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series) return;
+    priceLinesRef.current.forEach((pl) => { try { series.removePriceLine(pl); } catch {} });
+    priceLinesRef.current = [];
+    if (!levels || !levels.entry) return;
+    const mk = (price, color, title) =>
+      series.createPriceLine({ price, color, lineWidth: 2, lineStyle: 0, axisLabelVisible: true, title });
+    priceLinesRef.current.push(mk(levels.entry, "#f7931a", "Entry"));
+    if (levels.take_profit) priceLinesRef.current.push(mk(levels.take_profit, "#26a17b", "TP"));
+    if (levels.stop_loss) priceLinesRef.current.push(mk(levels.stop_loss, "#e5484d", "SL"));
+  }, [levels, symbol, interval]);
+
   return (
     <div>
       <div ref={containerRef} data-testid="trading-chart" className="w-full h-[460px]" />
-      <div className="flex items-center justify-between mt-2 px-1 text-[11px] text-muted-foreground">
-        <span className="flex items-center gap-3">
+      <div className="flex items-center justify-between mt-2 px-1 text-[11px] text-muted-foreground flex-wrap gap-2">
+        <span className="flex items-center gap-3 flex-wrap">
           <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(38,161,123,0.6)" }} /> Volume up</span>
           <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(229,72,77,0.6)" }} /> Volume down</span>
           <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5" style={{ background: "#f7931a" }} /> Money Flow (MFI 14)</span>
