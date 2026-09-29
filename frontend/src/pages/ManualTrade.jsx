@@ -20,6 +20,7 @@ export default function ManualTrade() {
   const [analysisOpen, setAnalysisOpen] = useState(true);
   const [signalsOpen, setSignalsOpen] = useState(true);
   const [sigQuery, setSigQuery] = useState("");
+  const [suggested, setSuggested] = useState(null);
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
@@ -55,14 +56,14 @@ export default function ManualTrade() {
   const topSignals = useMemo(() => {
     const rows = signals.data || [];
     const active = rows.filter((s) => s.action !== "HOLD");
-    return (active.length ? active : rows).slice(0, 5);
+    return (active.length ? active : rows).slice(0, 3);
   }, [signals.data]);
 
-  const pickSignal = (s) => { setSymbol(s.symbol); };
+  const pickSignal = (s) => { setSymbol(s.symbol); setSuggested(s.symbol); };
   const quickAnalyze = (e) => {
     e.preventDefault();
     const q = sigQuery.trim().toUpperCase().replace(/USDT$/, "");
-    if (q) { setSymbol(q); setSigQuery(""); }
+    if (q) { setSymbol(q); setSuggested(q); setSigQuery(""); }
   };
 
   // Fallback price (from coins snapshot) if WS has not delivered yet
@@ -305,13 +306,31 @@ export default function ManualTrade() {
               ⚠️ {t("high_leverage_warning")}
             </div>
           )}
+          {/* One-Tap Trade — appears when a signal was tapped; shows AI Direction/Entry/TP/SL */}
+          {suggested === symbol && levels && (
+            <div className="mb-3 p-3 rounded-lg border border-gold/40 bg-gold/5" data-testid="one-tap-trade">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] text-gold font-semibold flex items-center gap-1"><Zap size={12} /> One-Tap Trade</span>
+                {(() => { const d = DIR[analysis.data?.action || "HOLD"] || DIR.HOLD; return (
+                  <span className={`text-[11px] px-2 py-0.5 rounded-md border font-semibold flex items-center gap-1 ${d.cls}`} data-testid="one-tap-direction">
+                    <d.Icon size={11} /> {d.label}
+                  </span>
+                ); })()}
+              </div>
+              <div className="space-y-1 text-[11px] mono">
+                <div className="flex justify-between"><span className="text-muted-foreground">Entry</span><span>${fmt(levels.entry)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">TP</span><span className="text-success">${fmt(levels.take_profit)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">SL</span><span className="text-danger">${fmt(levels.stop_loss)}</span></div>
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3 mt-3">
             <button disabled={busy} onClick={() => trade("BUY")} data-testid="manual-buy-button"
-              className="py-2.5 rounded-lg font-semibold bg-success/20 text-success border border-success/40 hover:bg-success/30 disabled:opacity-50">
+              className={`py-2.5 rounded-lg font-semibold bg-success/20 text-success border border-success/40 hover:bg-success/30 disabled:opacity-50 ${suggested === symbol && analysis.data?.action === "BUY" ? "ring-2 ring-success" : ""}`}>
               {t("buy")}
             </button>
             <button disabled={busy} onClick={() => trade("SELL")} data-testid="manual-sell-button"
-              className="py-2.5 rounded-lg font-semibold bg-destructive/20 text-danger border border-destructive/40 hover:bg-destructive/30 disabled:opacity-50">
+              className={`py-2.5 rounded-lg font-semibold bg-destructive/20 text-danger border border-destructive/40 hover:bg-destructive/30 disabled:opacity-50 ${suggested === symbol && analysis.data?.action === "SELL" ? "ring-2 ring-danger" : ""}`}>
               {t("sell")}
             </button>
           </div>
