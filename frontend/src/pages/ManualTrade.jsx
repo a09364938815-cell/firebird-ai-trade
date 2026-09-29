@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Search, Star, X, Plus, Wifi, Wallet, TrendingUp, TrendingDown, Minus, Target, Shield, ChevronDown, Bot } from "lucide-react";
+import { Search, Star, X, Plus, Wifi, Wallet, TrendingUp, TrendingDown, Minus, Target, Shield, ChevronDown, Bot, Zap } from "lucide-react";
 import api, { formatApiErrorDetail } from "@/lib/api";
 import { useI18n } from "@/i18n";
 import { PageTitle, Panel, fmt, pnlColor } from "@/components/common";
@@ -18,6 +18,8 @@ export default function ManualTrade() {
   const [leverage, setLeverage] = useState(1);
   const [busy, setBusy] = useState(false);
   const [analysisOpen, setAnalysisOpen] = useState(true);
+  const [signalsOpen, setSignalsOpen] = useState(true);
+  const [sigQuery, setSigQuery] = useState("");
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
@@ -42,6 +44,26 @@ export default function ManualTrade() {
     queryFn: () => api.get(`/market/analysis?symbol=${symbol}&interval=${tf}`).then((r) => r.data),
     refetchInterval: 30000,
   });
+
+  // Auto Signals: top movers from the AI Core for the current timeframe (backend caches 60s).
+  const signals = useQuery({
+    queryKey: ["auto-signals", tf],
+    queryFn: () => api.get(`/market/signals?interval=${tf}`).then((r) => r.data),
+    refetchInterval: 60000,
+    staleTime: 60000,
+  });
+  const topSignals = useMemo(() => {
+    const rows = signals.data || [];
+    const active = rows.filter((s) => s.action !== "HOLD");
+    return (active.length ? active : rows).slice(0, 5);
+  }, [signals.data]);
+
+  const pickSignal = (s) => { setSymbol(s.symbol); };
+  const quickAnalyze = (e) => {
+    e.preventDefault();
+    const q = sigQuery.trim().toUpperCase().replace(/USDT$/, "");
+    if (q) { setSymbol(q); setSigQuery(""); }
+  };
 
   // Fallback price (from coins snapshot) if WS has not delivered yet
   const fallbackPrice = coins.data?.find((c) => c.symbol === symbol)?.price;
@@ -187,7 +209,8 @@ export default function ManualTrade() {
     <div>
       <PageTitle title={t("nav_manual")} subtitle={t("disclaimer")} />
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <Panel title={t("open_position")} testid="manual-trade-panel" className="lg:col-span-3">
+        <div className="lg:col-span-3 space-y-6">
+        <Panel title={t("open_position")} testid="manual-trade-panel">
           {/* Searchable coin list */}
           <label className="text-xs text-muted-foreground">{t("symbol")}</label>
           <div className="relative mt-1 mb-2">
@@ -294,6 +317,66 @@ export default function ManualTrade() {
           </div>
         </Panel>
 
+        {/* Auto Signals — reuses Firebird AI Core, cached 60s. Click to load into chart + order form. */}
+        <div className="glass card-hover rounded-2xl p-5 md:p-6" data-testid="auto-signals-panel">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-head font-semibold text-lg flex items-center gap-2">
+              <Zap size={17} className="text-gold" /> Auto Signals
+            </h3>
+            <button onClick={() => setSignalsOpen((v) => !v)} data-testid="auto-signals-toggle"
+              className="lg:hidden p-1 rounded hover:bg-secondary">
+              <ChevronDown size={18} className={`transition-transform ${signalsOpen ? "rotate-180" : ""}`} />
+            </button>
+          </div>
+          <div className={`${signalsOpen ? "" : "hidden"} lg:block`}>
+            {/* Custom coin quick-analyze */}
+            <form onSubmit={quickAnalyze} className="flex items-center gap-2 mb-3">
+              <div className="flex items-center gap-2 flex-1 px-3 py-2 rounded-lg bg-input border border-border focus-within:border-primary">
+                <Search size={13} className="text-muted-foreground shrink-0" />
+                <input value={sigQuery} onChange={(e) => setSigQuery(e.target.value)}
+                  placeholder="Analyze any coin…" data-testid="auto-signals-search"
+                  className="w-full bg-transparent outline-none text-sm mono" />
+              </div>
+              <button type="submit" data-testid="auto-signals-analyze"
+                className="px-3 py-2 rounded-lg text-xs font-semibold bg-gold/15 text-gold border border-gold/40 hover:bg-gold/25">
+                Analyze
+              </button>
+            </form>
+
+            {topSignals.length === 0 ? (
+              <div className="text-sm text-muted-foreground py-4 text-center" data-testid="auto-signals-empty">
+                {signals.isLoading ? "Scanning the market…" : "No signals yet."}
+              </div>
+            ) : (
+              <div className="space-y-2" data-testid="auto-signals-list">
+                {topSignals.map((s) => {
+                  const d = DIR[s.action] || DIR.HOLD;
+                  return (
+                    <button key={s.symbol} onClick={() => pickSignal(s)} data-testid={`auto-signal-${s.symbol}`}
+                      className={`w-full text-start p-3 rounded-lg border transition-colors hover:border-primary/50 ${symbol === s.symbol ? "bg-primary/10 border-primary/40" : "bg-secondary/40 border-border"}`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-head font-bold text-sm">{s.symbol}/USDT</span>
+                        <span className={`text-[11px] px-2 py-0.5 rounded-md border font-semibold flex items-center gap-1 ${d.cls}`}>
+                          <d.Icon size={11} /> {d.label}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
+                          <div className="h-full rounded-full bg-gradient-to-r from-gold to-primary" style={{ width: `${s.confidence ?? 0}%` }} />
+                        </div>
+                        <span className="mono text-[11px] text-muted-foreground">{s.confidence ?? 0}</span>
+                      </div>
+                      <div className="text-[11px] text-muted-foreground truncate">{(s.reason || "").split(";")[0]}</div>
+                      <div className="text-[10px] text-muted-foreground/70 mt-0.5">{timeAgo(s.generated_at)}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+        </div>
+
         <Panel
           title={
             <div className="flex items-center justify-between w-full gap-3 flex-wrap">
@@ -367,6 +450,17 @@ const DIR = {
   SELL: { label: "SELL", cls: "bg-destructive/15 text-danger border-destructive/40", Icon: TrendingDown },
   HOLD: { label: "HOLD", cls: "bg-secondary text-muted-foreground border-border", Icon: Minus },
 };
+
+function timeAgo(iso) {
+  if (!iso) return "";
+  const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
 
 function BotAnalysis({ symbol, tf, data, levels, hasPosition }) {
   if (!data) {

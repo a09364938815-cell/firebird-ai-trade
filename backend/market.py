@@ -2,6 +2,7 @@ import time
 import math
 import random
 import os
+from datetime import datetime, timezone
 from typing import List
 
 import httpx
@@ -295,16 +296,24 @@ async def klines(symbol: str = "BTC", interval: str = "1h", limit: int = 120):
 async def signals(interval: str = "1h"):
     if interval not in INTERVAL_MAP:
         interval = "1h"
+    cache_key = f"signals:{interval}"
+    cached = _cache.get(cache_key)
+    if cached and time.time() - cached[0] < 60:
+        return cached[1]
     tickers = await get_tickers()
+    generated_at = datetime.now(timezone.utc).isoformat()
     out = []
     for c in COINS:
         data = await get_klines(c["symbol"], interval, 80)
         sig = compute_signal(data["candles"])
         t = tickers.get(c["symbol"], {})
+        confidence = max(0, min(100, round(abs(sig["score"] - 50) * 2)))
         out.append({"symbol": c["symbol"], "name": c["name"],
                     "price": t.get("price"), "change_24h": t.get("change_24h"),
-                    "interval": interval, **sig})
+                    "interval": interval, "confidence": confidence,
+                    "generated_at": generated_at, **sig})
     out.sort(key=lambda x: x["score"], reverse=True)
+    _cache[cache_key] = (time.time(), out)
     return out
 
 
