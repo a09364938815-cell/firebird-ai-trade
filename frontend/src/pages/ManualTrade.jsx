@@ -5,11 +5,15 @@ import { Search, Star, X, Plus, Wifi } from "lucide-react";
 import api, { formatApiErrorDetail } from "@/lib/api";
 import { useI18n } from "@/i18n";
 import { PageTitle, Panel, fmt, pnlColor } from "@/components/common";
+import { TradingChart } from "@/components/TradingChart";
+
+const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h"];
 
 export default function ManualTrade() {
   const { t, tv } = useI18n();
   const qc = useQueryClient();
   const [symbol, setSymbol] = useState("BTC");
+  const [tf, setTf] = useState("15m");
   const [amount, setAmount] = useState(25);
   const [leverage, setLeverage] = useState(1);
   const [busy, setBusy] = useState(false);
@@ -242,32 +246,51 @@ export default function ManualTrade() {
           </div>
         </Panel>
 
-        <Panel title={t("nav_positions")} className="lg:col-span-2" testid="manual-positions">
-          {(portfolio.data?.positions || []).length === 0 ? (
-            <div className="text-sm text-muted-foreground py-8 text-center">{t("no_positions")}</div>
-          ) : (
-            <div className="space-y-2">
-              {portfolio.data.positions.map((p) => (
-                <div key={p.id} className="flex items-center justify-between flex-wrap gap-2 p-3 rounded-lg bg-secondary/40" data-testid={`position-${p.symbol}`}>
-                  <div>
-                    <span className="font-head font-bold">{p.symbol}</span>
-                    <span className="text-xs text-muted-foreground ml-2">{tv(p.side)} · {tv(p.source)}</span>
-                  </div>
-                  <div className="flex items-center flex-wrap gap-2 sm:gap-5 text-xs sm:text-sm">
-                    <span className="mono">{t("entry")} ${fmt(p.entry_price)}</span>
-                    <span className="mono">{t("current")} ${fmt(p.current_price)}</span>
-                    <span className={`mono w-20 text-right ${pnlColor(p.pnl)}`}>{p.pnl > 0 ? "+" : ""}${fmt(p.pnl)}</span>
-                    <button onClick={() => closeOne(p.id)} data-testid={`close-${p.symbol}`}
-                      className="text-xs px-3 py-1 rounded-md border border-border hover:border-destructive hover:text-danger">
-                      {t("close")}
-                    </button>
-                  </div>
-                </div>
-              ))}
+        <Panel
+          title={
+            <div className="flex items-center justify-between w-full gap-3 flex-wrap">
+              <span className="flex items-center gap-2"><span className="font-head font-bold">{symbol}/USDT</span>
+                <span className="mono text-sm text-muted-foreground">${fmt(price)}</span></span>
+              <div className="flex gap-1" data-testid="chart-timeframes">
+                {TIMEFRAMES.map((f) => (
+                  <button key={f} onClick={() => setTf(f)} data-testid={`chart-tf-${f}`}
+                    className={`px-2.5 py-1 rounded-md text-xs mono border ${tf === f ? "bg-gold/15 text-gold border-gold/40" : "border-border hover:bg-secondary"}`}>
+                    {f}
+                  </button>
+                ))}
+              </div>
             </div>
-          )}
+          }
+          className="lg:col-span-2" testid="manual-chart-panel">
+          <TradingChart symbol={symbol} interval={tf} />
         </Panel>
       </div>
+
+      <Panel title={t("nav_positions")} className="mt-6" testid="manual-positions">
+        {(portfolio.data?.positions || []).length === 0 ? (
+          <div className="text-sm text-muted-foreground py-8 text-center">{t("no_positions")}</div>
+        ) : (
+          <div className="space-y-2">
+            {portfolio.data.positions.map((p) => (
+              <div key={p.id} className="flex items-center justify-between flex-wrap gap-2 p-3 rounded-lg bg-secondary/40" data-testid={`position-${p.symbol}`}>
+                <div>
+                  <span className="font-head font-bold">{p.symbol}</span>
+                  <span className="text-xs text-muted-foreground ml-2">{tv(p.side)} · {tv(p.source)}</span>
+                </div>
+                <div className="flex items-center flex-wrap gap-2 sm:gap-5 text-xs sm:text-sm">
+                  <span className="mono">{t("entry")} ${fmt(p.entry_price)}</span>
+                  <span className="mono">{t("current")} ${fmt(p.current_price)}</span>
+                  <span className={`mono w-20 text-right ${pnlColor(p.pnl)}`}>{p.pnl > 0 ? "+" : ""}${fmt(p.pnl)}</span>
+                  <button onClick={() => closeOne(p.id)} data-testid={`close-${p.symbol}`}
+                    className="text-xs px-3 py-1 rounded-md border border-border hover:border-destructive hover:text-danger">
+                    {t("close")}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
     </div>
   );
 }
