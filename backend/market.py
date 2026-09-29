@@ -5,7 +5,11 @@ from typing import List
 
 import httpx
 import numpy as np
-from fastapi import APIRouter, HTTPException
+from bson import ObjectId
+from fastapi import APIRouter, HTTPException, Depends
+
+from db import db
+from auth import get_current_user
 
 market_router = APIRouter(prefix="/api/market", tags=["market"])
 
@@ -194,6 +198,86 @@ async def coins():
         t = tickers.get(c["symbol"], {})
         out.append({**c, **t})
     return out
+
+
+async def _all_usdt_symbols():
+    """Full universe of tradeable USDT base assets from Binance (cached 1h).
+    Falls back to the curated COINS list if Binance is unreachable."""
+    cached = _cache.get("universe")
+    if cached and time.time() - cached[0] < 3600:
+        return cached[1]
+    universe = []
+    try:
+        data = await _fetch_json(f"{BINANCE}/api/v3/exchangeInfo", {})
+        for s in data.get("symbols", []):
+            if s.get("quoteAsset") == "USDT" and s.get("status") == "TRADING":
+                base = s.get("baseAsset")
+                if base and not base.endswith(("UP", "DOWN", "BULL", "BEAR")):
+                    universe.append(base)
+        universe = sorted(set(universe))
+    except Exception:
+        universe = [c["symbol"] for c in COINS]
+    if not universe:
+        universe = [c["symbol"] for c in COINS]
+    _cache["universe"] = (time.time(), universe)
+    return universe
+
+
+@market_router.get("/search")
+async def search(q: str = "", limit: int = 20):
+    """Searchable coin list across all Binance USDT pairs."""
+    q = (q or "").strip().upper()
+    universe = await _all_usdt_symbols()
+    names = {c["symbol"]: c["name"] for c in COINS}
+    if not q:
+        results = [c["symbol"] for c in COINS]
+    else:
+        starts = [s for s in universe if s.startswith(q)]
+        contains = [s for s in universe if q in s and not s.startswith(q)]
+        results = starts + contains
+    results = results[: min(limit, 50)]
+    return {"results": [{"symbol": s, "name": names.get(s, s)} for s in results]}
+
+
+@market_router.get("/ticker")
+async def ticker(symbol: str = "BTC"):
+    """Live price + 24h change for any symbol (Binance, synthetic fallback)."""
+    symbol = symbol.upper()
+    try:
+        r = await _fetch_json(f"{BINANCE}/api/v3/ticker/24hr", {"symbol": f"{symbol}USDT"})
+        return {"symbol": symbol, "price": float(r["lastPrice"]),
+                "change_24h": float(r["priceChangePercent"]),
+                "volume": float(r["quoteVolume"]), "simulated": False}
+    except Exception:
+        rnd = random.Random(sum(ord(x) for x in symbol) + int(time.time() // 60))
+        base = _BASE_PRICE.get(symbol, 10.0)
+        return {"symbol": symbol, "price": round(base * (0.97 + rnd.random() * 0.06), 6),
+                "change_24h": round((rnd.random() - 0.5) * 12, 2),
+                "volume": round(base * (1e6 + rnd.random() * 5e7), 0), "simulated": True}
+
+
+@market_router.get("/watchlist")
+async def get_watchlist(user: dict = Depends(get_current_user)):
+    u = await db.users.find_one({"_id": ObjectId(user["id"])})
+    return {"symbols": (u or {}).get("watchlist", [])}
+
+
+@market_router.post("/watchlist")
+async def add_watchlist(payload: dict, user: dict = Depends(get_current_user)):
+    symbol = str(payload.get("symbol", "")).strip().upper()
+    if not symbol or len(symbol) > 15 or not symbol.isalnum():
+        raise HTTPException(status_code=400, detail="Invalid symbol")
+    await db.users.update_one({"_id": ObjectId(user["id"])}, {"$addToSet": {"watchlist": symbol}})
+    u = await db.users.find_one({"_id": ObjectId(user["id"])})
+    return {"symbols": u.get("watchlist", [])}
+
+
+@market_router.delete("/watchlist/{symbol}")
+async def remove_watchlist(symbol: str, user: dict = Depends(get_current_user)):
+    await db.users.update_one({"_id": ObjectId(user["id"])},
+                              {"$pull": {"watchlist": symbol.upper()}})
+    u = await db.users.find_one({"_id": ObjectId(user["id"])})
+    return {"symbols": u.get("watchlist", [])}
 
 
 @market_router.get("/klines")
