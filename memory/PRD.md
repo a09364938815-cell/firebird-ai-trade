@@ -79,3 +79,22 @@ Secure server-side auth; demo-first ($100); multi-language RTL; fixed sidebar + 
 - P2: full 10-language translations; live order execution (real trading) once keys provided.
 - Cleanup: remove now-unused auth.decode_access_sub.
 
+
+### Security — Secret Rotation (owner-requested, DONE)
+- Rotated ADMIN_PASSWORD (safe charset), JWT_SECRET (64 hex), DATA_ENCRYPTION_KEY (Fernet) multiple times; re-encrypted stored exchange keys old→new on each data-key rotation.
+- New values live ONLY in /app/backend/.env. seed_admin (idempotent) re-hashes admin password on restart.
+- Deleted /app/OWNER_SECRETS.txt, QR files, and /app/memory/test_credentials.md at owner's request. Admin creds now sourced from .env ADMIN_PASSWORD only (read programmatically, never printed).
+
+### Manual Trade — FIX 1 (DONE, testing_agent iteration_6, no critical issues)
+- Backend market.py: GET /api/market/search (auth), /api/market/ticker (auth), and per-user Watchlist in MongoDB (GET/POST/DELETE /api/market/watchlist, db.users.watchlist, user-scoped).
+- Frontend ManualTrade.jsx: searchable coin selector (browser fetches Binance exchangeInfo universe, cached localStorage fb_universe; falls back to backend /api/market/search when browser blocked), per-user Watchlist chips (add/remove/select, persists across reload), real-time price via Binance WebSocket (wss trade stream) with graceful fallback to coins snapshot.
+- ENV NOTE: preview datacenter is geo/CORS-blocked from Binance (search/ticker use curated fallback, WS 451). On the user's real device the full universe + live WS work.
+- Manual Trade route is /manual (not /manual-trade). i18n NOT touched (new labels English per user request).
+
+### Manual Trade — remaining FIXES (P1, pending user go-ahead one at a time)
+- FIX 2: Lightweight Charts (TradingView) candlestick + timeframe selector.
+- FIX 3: Volume histogram (green/red) + Money Flow indicator.
+- FIX 4: Auto-Signals / Bot Analysis panel (direction, reason, Entry/TP/SL lines on chart).
+- FIX 5-8: liquidity zones, auto-analysis for selected coin, strategy details, polish.
+- Later: translate the new Manual Trade English labels into i18n (user deferred to save credits).
+

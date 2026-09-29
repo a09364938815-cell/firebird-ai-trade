@@ -224,7 +224,7 @@ async def _all_usdt_symbols():
 
 
 @market_router.get("/search")
-async def search(q: str = "", limit: int = 20):
+async def search(q: str = "", limit: int = 20, user: dict = Depends(get_current_user)):
     """Searchable coin list across all Binance USDT pairs."""
     q = (q or "").strip().upper()
     universe = await _all_usdt_symbols()
@@ -240,7 +240,7 @@ async def search(q: str = "", limit: int = 20):
 
 
 @market_router.get("/ticker")
-async def ticker(symbol: str = "BTC"):
+async def ticker(symbol: str = "BTC", user: dict = Depends(get_current_user)):
     """Live price + 24h change for any symbol (Binance, synthetic fallback)."""
     symbol = symbol.upper()
     try:

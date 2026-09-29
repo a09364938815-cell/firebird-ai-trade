@@ -66,13 +66,18 @@ export default function ManualTrade() {
     if (!q) { setResults([]); return; }
     const tmo = setTimeout(async () => {
       const uni = universeRef.current;
+      let local = [];
       if (uni.length) {
         const starts = uni.filter((s) => s.startsWith(q));
         const contains = uni.filter((s) => s.includes(q) && !s.startsWith(q));
-        setResults([...starts, ...contains].slice(0, 30).map((s) => ({ symbol: s, name: s })));
+        local = [...starts, ...contains].slice(0, 30).map((s) => ({ symbol: s, name: s }));
+      }
+      if (local.length) {
+        setResults(local);
         setShowResults(true);
         return;
       }
+      // Universe unavailable (e.g. browser blocked from Binance) → server search fallback
       try {
         const { data } = await api.get(`/market/search?q=${encodeURIComponent(q)}`);
         setResults(data.results || []);

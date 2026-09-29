@@ -1,0 +1,41 @@
+{
+  "summary": "Tested FIX 1 (Manual Trade upgrades): coin search, ticker, MongoDB-backed watchlist, and Binance WebSocket price fallback. Backend 8/9 tests pass; 1 minor expectation mismatch (search endpoint is public, not auth-required). Frontend Manual Trade page loads at route /manual (sidebar link), renders live price via graceful fallback despite Binance being both CORS-blocked (exchangeInfo) and geo-blocked (WebSocket 451) in the preview env. Watchlist add/remove/persist across reload works end-to-end.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/market/search", "issue": "Endpoint is publicly accessible (no auth dependency). Review spec said it requires auth. Either add Depends(get_current_user) or update spec. Non-blocking."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Coin search universe", "issue": "Browser is CORS-blocked from Binance exchangeInfo, so the universe falls back to the ~15-coin curated snapshot from /api/market/coins. Searching for coins NOT in the curated list (e.g. PEPE, ARB) returns 0 results in the UI even though the backend /api/market/search supports them. Consider using the backend /api/market/search as the primary source (server has curated fallback + can proxy Binance) instead of calling Binance directly from the browser.", "affected_selectors": ["coin-search-input", "coin-search-results", "search-result-<SYM>"]},
+      {"flow": "Live WebSocket price", "issue": "wss://stream.binance.com:9443 returns 451 in preview datacenter. Fallback to coins snapshot works (price renders, no crash), as expected. Live-indicator still shows even though WS never connects; consider reflecting connected/disconnected state visually."}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_fix1_market_watchlist.py",
+    "/app/test_reports/pytest/fix1_results.xml"
+  ],
+  "action_items": [
+    "Decide whether /api/market/search should require auth (add Depends(get_current_user)) or drop the auth claim from spec.",
+    "Route mismatch: spec says /manual-trade but the sidebar link + router uses /manual. Direct navigation to /manual-trade redirects to dashboard. Add an alias route or update spec.",
+    "Consider driving frontend coin search via GET /api/market/search (server-side, avoids Binance CORS entirely) so users can find non-curated coins like PEPE/ARB in the preview environment."
+  ],
+  "critical_code_review_comments": [
+    "market.py get_watchlist: if user document is None, returns [], but ObjectId(user['id']) will raise if id format changes. Safe for now.",
+    "add_watchlist: symbol validation uses isalnum() which allows numeric-only symbols; acceptable for tickers.",
+    "Frontend fetches Binance exchangeInfo directly from browser and caches in localStorage as fb_universe; this will always fail in most preview/production browsers due to CORS. Better to use backend /api/market/search."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_fix1_market_watchlist.py"
+  ],
+  "success_rate": {"backend": "89% (8/9)", "frontend": "90% (search of non-curated coins limited by client-side Binance CORS)"},
+  "test_credentials": "admin@firebird.ai / value of ADMIN_PASSWORD in /app/backend/.env",
+  "seed_data_creation": "Temporary registered user TEST_user_<ts>@example.com created for user-scoping test. Admin watchlist entries (PEPE, ZZZTEST, BTC) added and removed as cleanup.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend routes verified: /api/market/search, /api/market/ticker, /api/market/watchlist GET/POST/DELETE all functional; watchlist is user-scoped in db.users.watchlist. Frontend Manual Trade route is /manual (not /manual-trade). Binance is fully blocked (CORS + geo 451) from this datacenter/browser; the app gracefully falls back to /api/market/coins snapshot for price and to curated COINS list for search. Live-indicator always renders regardless of WS state.",
+  "rca of the issue": "Search-for-non-curated-coins issue in browser: root cause is direct client-side call to Binance exchangeInfo which is CORS-blocked. Mitigation: switch frontend to server-side /api/market/search endpoint that already returns proper {symbol,name} results and has its own Binance fallback."
+}
