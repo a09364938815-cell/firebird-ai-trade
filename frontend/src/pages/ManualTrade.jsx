@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Search, Star, X, Plus, Wifi } from "lucide-react";
+import { Search, Star, X, Plus, Wifi, Wallet } from "lucide-react";
 import api, { formatApiErrorDetail } from "@/lib/api";
 import { useI18n } from "@/i18n";
 import { PageTitle, Panel, fmt, pnlColor } from "@/components/common";
@@ -38,6 +38,7 @@ export default function ManualTrade() {
   // Fallback price (from coins snapshot) if WS has not delivered yet
   const fallbackPrice = coins.data?.find((c) => c.symbol === symbol)?.price;
   const price = livePrice ?? fallbackPrice;
+  const freeBalance = portfolio.data?.cash ?? 0;
 
   // Load the full tradeable universe from Binance in the browser (server may be geo-blocked).
   // Cached in localStorage for 24h. Falls back to the server search if the browser is also blocked.
@@ -193,8 +194,21 @@ export default function ManualTrade() {
               <span className="text-[10px] text-muted-foreground">{liveConnected ? "Live" : "…"}</span>
             </div>
           </div>
-          <div className="text-sm text-muted-foreground mb-3">
+          <div className="text-sm text-muted-foreground mb-2">
             {t("price")}: <span className="mono text-foreground" data-testid="live-price">${fmt(price)}</span>
+          </div>
+          <div className="flex items-center justify-between mb-3 px-3 py-2 rounded-lg bg-secondary/40 border border-border" data-testid="free-balance-box">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Wallet size={13} className="text-gold" /> Free Balance
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="mono font-semibold text-success" data-testid="free-balance-value">${fmt(freeBalance)}</span>
+              <button type="button" onClick={() => setAmount(Math.floor(freeBalance))} disabled={!freeBalance}
+                data-testid="free-balance-max"
+                className="text-[10px] px-2 py-0.5 rounded-md border border-border hover:border-gold hover:text-gold disabled:opacity-40">
+                Max
+              </button>
+            </div>
           </div>
 
           {/* Watchlist */}

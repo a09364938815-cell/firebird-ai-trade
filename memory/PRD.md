@@ -93,8 +93,9 @@ Secure server-side auth; demo-first ($100); multi-language RTL; fixed sidebar + 
 
 ### Manual Trade — remaining FIXES (P1, pending user go-ahead one at a time)
 - FIX 2: Lightweight Charts (TradingView) candlestick + timeframe selector.
-- FIX 3: Volume histogram (green/red) + Money Flow indicator.
+- FIX 3 (DONE 2026-06, self-verified via screenshot): TradingChart.jsx now renders 3 panes — candles, green/red Volume histogram (pane 1), Money Flow Index (MFI 14) line with 20/80 guide lines (pane 2). Live-updates via Binance kline WS (recomputes MFI each tick). Legend + live reading badge ("MFI xx · Bullish inflow/Bearish outflow/Overbought/Oversold"). Chart locale pinned to en-US (fixes en-US@posix crash + enforces English digits). ManualTrade.jsx: Free Balance box (portfolio.cash) with "Max" button that fills the amount.
 - FIX 4: Auto-Signals / Bot Analysis panel (direction, reason, Entry/TP/SL lines on chart).
 - FIX 5-8: liquidity zones, auto-analysis for selected coin, strategy details, polish.
+- DEFERRED (user, low credits): Email/username account system + email verification + forgot password/username + 2FA. Full plan captured; build when credits allow.
 - Later: translate the new Manual Trade English labels into i18n (user deferred to save credits).
 
