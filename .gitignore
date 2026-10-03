@@ -41,6 +41,7 @@ frontend/.env
 *token.json*
 *credentials.json*
 .git_creds
+.ssh/
 *.pem
 
 # Logs and debug files
