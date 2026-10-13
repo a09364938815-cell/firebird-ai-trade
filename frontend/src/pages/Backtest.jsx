@@ -4,12 +4,36 @@ import api, { formatApiErrorDetail } from "@/lib/api";
 import { useI18n } from "@/i18n";
 import { PageTitle, Panel, Stat, fmt, pnlColor } from "@/components/common";
 
-const SYMBOLS = ["BTC", "ETH", "SOL", "BNB", "DOGE", "AVAX"];
-const TFS = ["15m", "1h", "4h", "1d"];
+const DEFAULT_SYMBOLS = ["BTC","ETH","SOL","BNB","DOGE","AVAX"];
+const TFS = ["1m", "5m", "15m", "1h", "4h", "1d"];
 
 export default function Backtest() {
   const { t } = useI18n();
   const [symbol, setSymbol] = useState("BTC");
+  const [coins, setCoins] = useState(() => {
+    try {
+      const saved = localStorage.getItem("fb_backtest_coins");
+      return saved ? JSON.parse(saved) : DEFAULT_SYMBOLS;
+    } catch (e) { return DEFAULT_SYMBOLS; }
+  });
+  const [showAddCoin, setShowAddCoin] = useState(false);
+  const [newCoinInput, setNewCoinInput] = useState("");
+  const addCoin = () => {
+    const t = newCoinInput.trim().toUpperCase();
+    if (!t || coins.includes(t)) { setShowAddCoin(false); setNewCoinInput(""); return; }
+    const n = [...coins, t];
+    setCoins(n);
+    localStorage.setItem("fb_backtest_coins", JSON.stringify(n));
+    setShowAddCoin(false);
+    setNewCoinInput("");
+  };
+  const removeCoin = (c) => {
+    if (coins.length <= 1) return;
+    const n = coins.filter(x => x !== c);
+    setCoins(n);
+    localStorage.setItem("fb_backtest_coins", JSON.stringify(n));
+    if (symbol === c) setSymbol(n[0]);
+  };
   const [tf, setTf] = useState("1h");
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -33,16 +57,21 @@ export default function Backtest() {
         <div className="flex flex-wrap items-end gap-4">
           <div>
             <label className="text-xs text-muted-foreground">{t("symbol")}</label>
-            <div className="flex gap-2 mt-1">
-              {SYMBOLS.map((s) => (
+            <div className="flex flex-wrap gap-2 mt-1">
+              {coins.map((s) => (
                 <button key={s} onClick={() => setSymbol(s)} data-testid={`bt-symbol-${s}`}
-                  className={`px-2.5 py-1 rounded-md text-xs border ${symbol === s ? "bg-primary/15 text-primary border-primary/40" : "border-border"}`}>{s}</button>
+                  className={`group px-2.5 py-1 rounded-md text-xs border flex items-center gap-1 ${symbol === s ? "bg-primary/15 text-primary border-primary/40" : "border-border"}`}>
+                  {s}
+                  {coins.length > 1 && (
+                    <span onClick={(e) => { e.stopPropagation(); removeCoin(s); }} className="opacity-40 hover:opacity-100 hover:text-red-400 cursor-pointer text-sm leading-none">×</span>
+                  )}
+                </button>
               ))}
             </div>
           </div>
           <div>
             <label className="text-xs text-muted-foreground">{t("timeframe")}</label>
-            <div className="flex gap-2 mt-1">
+            <div className="flex flex-wrap gap-2 mt-1">
               {TFS.map((f) => (
                 <button key={f} onClick={() => setTf(f)} data-testid={`bt-tf-${f}`}
                   className={`px-2.5 py-1 rounded-md text-xs mono border ${tf === f ? "bg-gold/15 text-gold border-gold/40" : "border-border"}`}>{f}</button>
