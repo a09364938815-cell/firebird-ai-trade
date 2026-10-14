@@ -1,4 +1,3 @@
-// ja translations (same keys as en)
 const ja = {
   "srv_general_unknown": "問題が発生しました。もう一度お試しください。",
   "srv_general_network": "ネットワークエラーです。接続を確認してください。",
@@ -687,6 +686,9 @@ const ja = {
   "revoke_all_others": "他のすべての端末からログアウト",
   "revoke_all_others_done": "他のすべての端末からログアウトしました",
   "no_other_devices": "他にアクティブな端末はありません",
-  "device_revoked": "デバイスをログアウトしました"
+  "device_revoked": "デバイスをログアウトしました",
+  "ui_logo_alt": "Firebird / Simorgh Tradeロゴ",
+  "ui_logo_switch_hint": "タップしてロゴを切り替え",
+  "ui_vpn_info": "VPN情報"
 };
 export default ja;

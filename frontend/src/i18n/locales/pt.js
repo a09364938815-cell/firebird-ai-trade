@@ -1,4 +1,3 @@
-// pt translations (same keys as en)
 const pt = {
   "srv_general_unknown": "Algo deu errado. Tente novamente.",
   "srv_general_network": "Erro de rede. Verifique sua conexão.",
@@ -201,7 +200,7 @@ const pt = {
   "buy": "Comprar",
   "sell": "Vender",
   "hold": "Manter",
-  "timeframe": "Timeframe",
+  "timeframe": "Período",
   "symbol": "Símbolo",
   "amount_usd": "Valor (USD)",
   "open_position": "Abrir posição",
@@ -248,7 +247,7 @@ const pt = {
   "risk_mode_active": "Ativo",
   "risk_mode_halted": "Pausado",
   "consecutive_losses_label": "Perdas seguidas",
-  "drawdown_label": "Drawdown",
+  "drawdown_label": "Rebaixamento",
   "open_positions_label": "Posições abertas",
   "max_concurrent_reached": "Máximo de operações simultâneas atingido.",
   "bot_reauthorized": "Bot reautorizado. Você pode ativar a negociação automática novamente.",
@@ -318,7 +317,7 @@ const pt = {
   "high_opportunity": "Alta oportunidade",
   "alerts_triggered_today": "alertas hoje",
   "score_range": "Faixa de pontuação",
-  "timeframe_label": "Timeframe",
+  "timeframe_label": "Período",
   "direction_label": "Direção",
   "risk_disclaimer_title": "Aviso de risco",
   "risk_disclaimer": "Os sinais são apenas informativos. Isto NÃO é aconselhamento financeiro. 98% das shitcoins falham. Use sempre stop-loss. Nunca arrisque mais de 1–5% por operação.",
@@ -340,7 +339,7 @@ const pt = {
   "no_balances": "Sem saldos (adicione chaves de API para carregar saldos ao vivo).",
   "safety": "Segurança",
   "opportunity": "Oportunidade",
-  "holders": "Holders",
+  "holders": "Detentores",
   "verdict": "Veredito",
   "coin": "Moeda",
   "chain": "Rede",
@@ -466,7 +465,7 @@ const pt = {
   "guide7_desc": "Navegue pela coleção de 555 fênix com 6 raridades lendárias.",
   "disclaimer": "Demo/sandbox. Nada aqui é aconselhamento financeiro. Nenhum sistema pode garantir uma taxa de acerto futura.",
   "src_manual": "Manual",
-  "src_auto": "Auto",
+  "src_auto": "Automático",
   "tier_legendary": "Lendário",
   "tier_epic": "Épico",
   "tier_rare": "Raro",
@@ -687,6 +686,9 @@ const pt = {
   "revoke_all_others": "Sair de todos os outros dispositivos",
   "revoke_all_others_done": "Saída de todos os outros dispositivos concluída",
   "no_other_devices": "Nenhum outro dispositivo ativo",
-  "device_revoked": "Dispositivo removido da conta"
+  "device_revoked": "Dispositivo removido da conta",
+  "ui_logo_alt": "Logo do Firebird / Simorgh Trade",
+  "ui_logo_switch_hint": "Toque para trocar o logo",
+  "ui_vpn_info": "Informações sobre VPN"
 };
 export default pt;

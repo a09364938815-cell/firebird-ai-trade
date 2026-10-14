@@ -228,7 +228,7 @@ export default function NFT() {
                                 {lst.intl ? (
                                   <span className="relative inline-flex">
                                     <button type="button" onClick={() => setVpnTip(vpnTip === lst.id ? null : lst.id)}
-                                      className="text-muted-foreground hover:text-primary" title={t("vpn_notice")} aria-label="vpn-info" data-testid={`vpn-info-${lst.id}`}>
+                                      className="text-muted-foreground hover:text-primary" title={t("vpn_notice")} aria-label={t("ui_vpn_info")} data-testid={`vpn-info-${lst.id}`}>
                                       <Info size={13} />
                                     </button>
                                     {vpnTip === lst.id && (

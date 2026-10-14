@@ -11,13 +11,13 @@ from scanner import scanner_router
 from scan_engine import scan_engine_router
 from ai_core import ai_router
 from nft import nft_router, seed_nft
-from export_zip import export_router
 from nft_market import nft_market_router
 from owner import owner_router
 from payments import payments_router
 from exchanges import exchanges_router
 from notifications import notifications_router
 from cron import cron_router
+from export_zip import export_router
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -33,7 +33,6 @@ async def root():
     return {"message": "Firebird AI Trade API", "status": "ok"}
 
 
-app.include_router(export_router)
 app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(market_router)
@@ -48,6 +47,7 @@ app.include_router(payments_router)
 app.include_router(exchanges_router)
 app.include_router(notifications_router)
 app.include_router(cron_router)
+app.include_router(export_router)
 
 import os
 

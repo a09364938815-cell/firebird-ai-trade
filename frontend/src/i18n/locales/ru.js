@@ -1,4 +1,3 @@
-// ru translations (same keys as en)
 const ru = {
   "srv_general_unknown": "Что-то пошло не так. Попробуйте ещё раз.",
   "srv_general_network": "Ошибка сети. Проверьте подключение.",
@@ -687,6 +686,9 @@ const ru = {
   "revoke_all_others": "Выйти со всех остальных устройств",
   "revoke_all_others_done": "Выход со всех остальных устройств выполнен",
   "no_other_devices": "Нет других активных устройств",
-  "device_revoked": "Устройство выведено из аккаунта"
+  "device_revoked": "Устройство выведено из аккаунта",
+  "ui_logo_alt": "Логотип Firebird / Simorgh Trade",
+  "ui_logo_switch_hint": "Нажмите, чтобы сменить логотип",
+  "ui_vpn_info": "Информация о VPN"
 };
 export default ru;

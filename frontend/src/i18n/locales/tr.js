@@ -1,4 +1,3 @@
-// tr translations (same keys as en)
 const tr = {
   "srv_general_unknown": "Bir şeyler ters gitti. Lütfen tekrar deneyin.",
   "srv_general_network": "Ağ hatası. Lütfen bağlantınızı kontrol edin.",
@@ -128,7 +127,7 @@ const tr = {
   "best_value": "En avantajlı",
   "plan_monthly": "Aylık",
   "plan_annual": "Yıllık",
-  "plan_test": "Test",
+  "plan_test": "Deneme",
   "days": "g",
   "pay_with_crypto": "Kriptoyla öde",
   "opening_checkout": "Ödeme açılıyor…",
@@ -342,7 +341,7 @@ const tr = {
   "opportunity": "Fırsat",
   "holders": "Sahipler",
   "verdict": "Karar",
-  "coin": "Coin",
+  "coin": "Kripto para",
   "chain": "Ağ",
   "scanning": "Taranıyor…",
   "scanner_subtitle": "Alım satım yapılabilir likiditeye sahip seçilmiş memecoinler (puan ≥ 75). Bilinmeyen ve dolandırıcı tokenlar gösterilmez.",
@@ -370,7 +369,7 @@ const tr = {
   "total_supply": "Toplam arz",
   "rarity": "Nadirlik",
   "bt_download": "İndir",
-  "bt_stop_loss": "Stop loss (TP = 2× SL)",
+  "bt_stop_loss": "Zarar durdur (TP = 2× SL)",
   "bt_min_score": "Min. sinyal skoru",
   "bt_share": "Paylaş",
   "bt_history": "Kaydedilen geriye dönük testler",
@@ -384,7 +383,7 @@ const tr = {
   "bt_avg_return": "Ort. getiri",
   "bt_skipped": "Atlandı (yeterli veri yok)",
   "bt_sec_major": "Ana",
-  "bt_sec_shitcoin": "Shitcoin",
+  "bt_sec_shitcoin": "Değersiz coin",
   "bt_sec_meme": "Meme",
   "bt_sec_nft": "NFT tokenları",
   "bt_sec_other": "Diğer",
@@ -631,7 +630,7 @@ const tr = {
   "liquidity_lock": "Likidite kilidi",
   "locked": "Kilitli",
   "unlocked": "Kilitsiz",
-  "honeypot": "Honeypot",
+  "honeypot": "Tuzak",
   "honeypot_safe_label": "Güvenli",
   "honeypot_risk": "Risk",
   "nft_demo_notice": "Demo işlem — gerçek NFT satın alınmaz",
@@ -687,6 +686,9 @@ const tr = {
   "revoke_all_others": "Diğer tüm cihazlardan çıkış yap",
   "revoke_all_others_done": "Diğer tüm cihazlardan çıkış yapıldı",
   "no_other_devices": "Başka aktif cihaz yok",
-  "device_revoked": "Cihaz hesaptan kaldırıldı"
+  "device_revoked": "Cihaz hesaptan kaldırıldı",
+  "ui_logo_alt": "Firebird / Simorgh Trade logosu",
+  "ui_logo_switch_hint": "Logoyu değiştirmek için dokunun",
+  "ui_vpn_info": "VPN bilgileri"
 };
 export default tr;

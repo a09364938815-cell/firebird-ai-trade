@@ -1,4 +1,3 @@
-// zh translations (same keys as en)
 const zh = {
   "srv_general_unknown": "出现问题，请重试。",
   "srv_general_network": "网络错误，请检查连接。",
@@ -385,7 +384,7 @@ const zh = {
   "bt_skipped": "已跳过（数据不足）",
   "bt_sec_major": "主流币",
   "bt_sec_shitcoin": "山寨币",
-  "bt_sec_meme": "Meme",
+  "bt_sec_meme": "迷因",
   "bt_sec_nft": "NFT 代币",
   "bt_sec_other": "其他",
   "bt_data_live": "实时市场数据",
@@ -687,6 +686,9 @@ const zh = {
   "revoke_all_others": "退出所有其他设备",
   "revoke_all_others_done": "已退出所有其他设备",
   "no_other_devices": "没有其他活跃设备",
-  "device_revoked": "设备已退出"
+  "device_revoked": "设备已退出",
+  "ui_logo_alt": "Firebird / Simorgh Trade 标志",
+  "ui_logo_switch_hint": "点击切换标志",
+  "ui_vpn_info": "VPN 信息"
 };
 export default zh;

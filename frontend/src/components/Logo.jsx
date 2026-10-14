@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useI18n } from "@/i18n";
 
 // Original Firebird / Simorgh dual logo (preserved from the legacy app),
 // served locally from /public/logos so it ships inside the build.
@@ -7,6 +8,7 @@ export const LOGO_B = "/logos/firebird-logo-b.png";
 export const FIREBIRD_LOGO = LOGO_A;
 
 export function Logo({ size = 40, withText = true }) {
+  const { t } = useI18n();
   const [which, setWhich] = useState(() => localStorage.getItem("fb_logo") || "a");
   const src = which === "b" ? LOGO_B : LOGO_A;
 
@@ -22,11 +24,11 @@ export function Logo({ size = 40, withText = true }) {
     <div className="flex items-center gap-3" data-testid="firebird-logo">
       <img
         src={src}
-        alt="Firebird / Simorgh Trade"
+        alt={t("ui_logo_alt")}
         width={size}
         height={size}
         onClick={toggle}
-        title="Tap to switch logo"
+        title={t("ui_logo_switch_hint")}
         data-testid="logo-toggle"
         className="rounded-lg ember-pulse cursor-pointer select-none"
         style={{ objectFit: "contain" }}
