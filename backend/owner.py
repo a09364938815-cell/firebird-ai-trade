@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 
 from db import db
-from auth import get_current_user
+from auth import get_current_user, send_email, email_subject, email_html
 
 owner_router = APIRouter(prefix="/api/owner", tags=["owner"])
 
@@ -12,6 +12,23 @@ async def get_admin(user: dict = Depends(get_current_user)):
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Owner access only")
     return user
+
+
+@owner_router.post("/test-email")
+async def test_email(admin: dict = Depends(get_admin)):
+    """Admin-only: send a branded test email to the configured OWNER_EMAIL
+    (server-side recipient, not caller-supplied) to verify email delivery."""
+    import os
+    to = os.environ.get("OWNER_EMAIL") or admin.get("email")
+    ok = send_email(
+        to, email_subject("test", "en"),
+        "Firebird AI email test — if you can read this, delivery works.",
+        html=email_html("Email Delivery Test", [
+            "This is a test email from Firebird AI.",
+            "If you received this, your email integration is working correctly.",
+        ]),
+    )
+    return {"ok": ok, "sent": ok, "to": to, "email_enabled": os.environ.get("EMAIL_ENABLED", "false")}
 
 
 def _mask(email: str) -> str:
@@ -44,7 +61,8 @@ async def overview(admin: dict = Depends(get_admin)):
         wins = sum(1 for p in closed if p.get("pnl", 0) > 0)
         n = len(closed)
         rows.append({
-            "email": _mask(u["email"]), "role": u.get("role", "user"),
+            "username": u.get("username") or _mask(u["email"]),
+            "email": u["email"], "email_masked": _mask(u["email"]), "role": u.get("role", "user"),
             "balance": round(u.get("demo_balance", 0), 2), "trades": n,
             "win_rate": round(wins / n * 100, 1) if n else 0,
             "total_pnl": round(pnl, 2), "volume": round(vol, 2),

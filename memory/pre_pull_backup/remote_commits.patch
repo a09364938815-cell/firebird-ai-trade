@@ -1,0 +1,309 @@
+diff --git a/.gitignore b/.gitignore
+index 4237cdd..fd7d568 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -93,3 +93,4 @@ android-sdk/
+ # overlay black-box crash/user-report dumps — session data, never history
+ **/.emergent/recordings/
+ frontend/node_modules/.cache/default-development/0.pack
++*.bak
+diff --git a/backend/trading.py b/backend/trading.py
+index 535c7d3..50a0386 100644
+--- a/backend/trading.py
++++ b/backend/trading.py
+@@ -569,65 +569,164 @@ async def withdraw(data: WithdrawInput, user: dict = Depends(get_current_user)):
+ 
+ 
+ @trading_router.get("/backtest")
+-async def backtest(symbol: str = "BTC", interval: str = "1h", user: dict = Depends(get_current_user)):
+-    """5x5 backtest: run the SMA/RSI strategy across 5 recent windows and report stats."""
+-    symbol = symbol.upper()
+-    data = await get_klines(symbol, interval, 300)
+-    candles = data["candles"]
+-    windows = []
+-    total = len(candles)
+-    win_size = 60
+-    starts = np.linspace(0, max(0, total - win_size), 5).astype(int)
+-    all_wins = 0
+-    all_trades = 0
+-    all_return = 0.0
+-    slp = 3.0  # stop-loss %, target = 2x (non-negotiable 2:1 reward:risk)
+-    for w, start in enumerate(starts):
+-        seg = candles[start:start + win_size]
+-        if len(seg) < 25:
+-            continue
+-        position = None
+-        entry = stop = target = 0.0
+-        wins = 0
+-        trades = 0
+-        ret = 0.0
+-        for i in range(22, len(seg)):
+-            sig = compute_signal(seg[:i + 1])
+-            close = seg[i][4]
+-            high = seg[i][2]
+-            low = seg[i][3]
+-            if position is None:
+-                # only enter strong, trend-aligned BUY signals
+-                if sig["action"] == "BUY" and sig["score"] >= 64 and sig["sma_fast"] > sig["sma_slow"]:
+-                    entry = close
+-                    stop = entry * (1 - slp / 100)
+-                    target = entry * (1 + 2 * slp / 100)
+-                    position = entry
+-            else:
+-                if low <= stop:
+-                    ret += -slp
+-                    trades += 1
+-                    position = None
+-                elif high >= target:
+-                    ret += 2 * slp
+-                    wins += 1
+-                    trades += 1
+-                    position = None
+-                elif sig["action"] == "SELL":
+-                    pnl_pct = (close - position) / position * 100
+-                    ret += pnl_pct
+-                    trades += 1
+-                    if pnl_pct > 0:
+-                        wins += 1
+-                    position = None
+-        all_wins += wins
+-        all_trades += trades
+-        all_return += ret
+-        windows.append({"window": w + 1, "trades": trades,
+-                        "win_rate": round(wins / trades * 100, 1) if trades else 0,
+-                        "return_pct": round(ret, 2)})
+-    return {"symbol": symbol, "interval": interval, "windows": windows,
+-            "total_trades": all_trades,
+-            "overall_win_rate": round(all_wins / all_trades * 100, 1) if all_trades else 0,
+-            "overall_return_pct": round(all_return, 2),
+-            "disclaimer": "Historical backtest only. Past performance does not guarantee future results."}
++async def backtest(payload: dict, user: dict = Depends(get_current_user)):
++    """
++    Enhanced backtest: LONG + SHORT + multi-coin + by-section stats.
++    """
++    symbols = payload.get("symbols", ["BTC"])
++    interval = payload.get("interval", "1h")
++    win_size = payload.get("window_size", 200)
++    slp = payload.get("slp", 2.0)
++    min_score = payload.get("min_score", 55)
++
++    SECTIONS = {
++        "major":    ["BTC", "ETH", "SOL", "BNB", "XRP", "ADA"],
++        "shitcoin": ["DOGE", "SHIB", "PEPE", "FLOKI", "BONK", "WIF"],
++        "meme":     ["MEME", "POPCAT", "BOME", "MYRO", "TURBO"],
++        "nft":      ["BLUR", "APE", "SAND", "MANA", "AXS"],
++    }
++
++    def get_section(sym):
++        for sec, coins in SECTIONS.items():
++            if sym in coins:
++                return sec
++        return "other"
++
++    all_results = []
++    section_stats = {}
++
++    for symbol in symbols:
++        try:
++            data = await get_klines(symbol, interval, 500)
++            candles = data["candles"]
++            total = len(candles)
++            if total < win_size + 50:
++                continue
++
++            starts = np.linspace(0, max(0, total - win_size), 5).astype(int)
++            all_wins = all_trades = 0
++            all_return = 0.0
++            windows = []
++
++            for w, start in enumerate(starts):
++                seg = candles[start:start + win_size]
++                if len(seg) < 50:
++                    continue
++                position = None
++                entry = stop = target = 0.0
++                direction = None
++                wins = trades = 0
++                ret = 0.0
++
++                for i in range(22, len(seg)):
++                    sig = compute_signal(seg[:i + 1])
++                    close = seg[i][4]
++                    high = seg[i][2]
++                    low = seg[i][3]
++                    action = sig.get("action", "HOLD")
++                    score = sig.get("score", 0)
++
++                    if position is None:
++                        if action == "BUY" and score >= min_score and sig["sma_fast"] > sig["sma_slow"]:
++                            entry = close
++                            stop = entry * (1 - slp / 100)
++                            target = entry * (1 + 2 * slp / 100)
++                            position = entry
++                            direction = "LONG"
++                        elif action == "SELL" and score >= min_score and sig["sma_fast"] < sig["sma_slow"]:
++                            entry = close
++                            stop = entry * (1 + slp / 100)
++                            target = entry * (1 - 2 * slp / 100)
++                            position = entry
++                            direction = "SHORT"
++                    else:
++                        exited = False
++                        if direction == "LONG":
++                            if low <= stop:
++                                ret += -slp
++                                trades += 1
++                                exited = True
++                            elif high >= target:
++                                ret += 2 * slp
++                                wins += 1
++                                trades += 1
++                                exited = True
++                        else:
++                            if high >= stop:
++                                ret += -slp
++                                trades += 1
++                                exited = True
++                            elif low <= target:
++                                ret += 2 * slp
++                                wins += 1
++                                trades += 1
++                                exited = True
++
++                        if not exited:
++                            opposite = (direction == "LONG" and action == "SELL") or \
++                                       (direction == "SHORT" and action == "BUY")
++                            if opposite:
++                                pnl_pct = ((close - entry) / entry * 100) if direction == "LONG" else ((entry - close) / entry * 100)
++                                ret += pnl_pct
++                                trades += 1
++                                if pnl_pct > 0:
++                                    wins += 1
++                                exited = True
++
++                        if exited:
++                            position = None
++                            direction = None
++
++                all_wins += wins
++                all_trades += trades
++                all_return += ret
++                windows.append({
++                    "window": w + 1,
++                    "trades": trades,
++                    "wins": wins,
++                    "win_rate": round(wins / trades * 100, 1) if trades else 0,
++                    "return_pct": round(ret, 2)
++                })
++
++            sec = get_section(symbol)
++            if sec not in section_stats:
++                section_stats[sec] = {"trades": 0, "wins": 0, "return": 0.0, "coins": []}
++            section_stats[sec]["trades"] += all_trades
++            section_stats[sec]["wins"] += all_wins
++            section_stats[sec]["return"] += all_return
++            section_stats[sec]["coins"].append(symbol)
++
++            all_results.append({
++                "symbol": symbol,
++                "section": sec,
++                "interval": interval,
++                "windows": windows,
++                "total_trades": all_trades,
++                "overall_win_rate": round(all_wins / all_trades * 100, 1) if all_trades else 0,
++                "overall_return_pct": round(all_return, 2),
++            })
++        except Exception as e:
++            all_results.append({"symbol": symbol, "error": str(e)})
++
++    by_section = {}
++    for sec, s in section_stats.items():
++        by_section[sec] = {
++            "total_trades": s["trades"],
++            "win_rate": round(s["wins"] / s["trades"] * 100, 1) if s["trades"] else 0,
++            "return_pct": round(s["return"], 2),
++            "coins": s["coins"],
++        }
++
++    return {
++        "results": all_results,
++        "by_section": by_section,
++        "config": {
++            "interval": interval,
++            "window_size": win_size,
++            "stop_loss_pct": slp,
++            "min_score": min_score,
++        },
++        "disclaimer": "Historical backtest only. Past performance does not guarantee future results."
++    }
++
++
+diff --git a/frontend/src/pages/Backtest.jsx b/frontend/src/pages/Backtest.jsx
+index cd7ceaa..a921c62 100644
+--- a/frontend/src/pages/Backtest.jsx
++++ b/frontend/src/pages/Backtest.jsx
+@@ -4,12 +4,36 @@ import api, { formatApiErrorDetail } from "@/lib/api";
+ import { useI18n } from "@/i18n";
+ import { PageTitle, Panel, Stat, fmt, pnlColor } from "@/components/common";
+ 
+-const SYMBOLS = ["BTC", "ETH", "SOL", "BNB", "DOGE", "AVAX"];
+-const TFS = ["15m", "1h", "4h", "1d"];
++const DEFAULT_SYMBOLS = ["BTC","ETH","SOL","BNB","DOGE","AVAX"];
++const TFS = ["1m", "5m", "15m", "1h", "4h", "1d"];
+ 
+ export default function Backtest() {
+   const { t } = useI18n();
+   const [symbol, setSymbol] = useState("BTC");
++  const [coins, setCoins] = useState(() => {
++    try {
++      const saved = localStorage.getItem("fb_backtest_coins");
++      return saved ? JSON.parse(saved) : DEFAULT_SYMBOLS;
++    } catch (e) { return DEFAULT_SYMBOLS; }
++  });
++  const [showAddCoin, setShowAddCoin] = useState(false);
++  const [newCoinInput, setNewCoinInput] = useState("");
++  const addCoin = () => {
++    const t = newCoinInput.trim().toUpperCase();
++    if (!t || coins.includes(t)) { setShowAddCoin(false); setNewCoinInput(""); return; }
++    const n = [...coins, t];
++    setCoins(n);
++    localStorage.setItem("fb_backtest_coins", JSON.stringify(n));
++    setShowAddCoin(false);
++    setNewCoinInput("");
++  };
++  const removeCoin = (c) => {
++    if (coins.length <= 1) return;
++    const n = coins.filter(x => x !== c);
++    setCoins(n);
++    localStorage.setItem("fb_backtest_coins", JSON.stringify(n));
++    if (symbol === c) setSymbol(n[0]);
++  };
+   const [tf, setTf] = useState("1h");
+   const [result, setResult] = useState(null);
+   const [busy, setBusy] = useState(false);
+@@ -33,16 +57,21 @@ export default function Backtest() {
+         <div className="flex flex-wrap items-end gap-4">
+           <div>
+             <label className="text-xs text-muted-foreground">{t("symbol")}</label>
+-            <div className="flex gap-2 mt-1">
+-              {SYMBOLS.map((s) => (
++            <div className="flex flex-wrap gap-2 mt-1">
++              {coins.map((s) => (
+                 <button key={s} onClick={() => setSymbol(s)} data-testid={`bt-symbol-${s}`}
+-                  className={`px-2.5 py-1 rounded-md text-xs border ${symbol === s ? "bg-primary/15 text-primary border-primary/40" : "border-border"}`}>{s}</button>
++                  className={`group px-2.5 py-1 rounded-md text-xs border flex items-center gap-1 ${symbol === s ? "bg-primary/15 text-primary border-primary/40" : "border-border"}`}>
++                  {s}
++                  {coins.length > 1 && (
++                    <span onClick={(e) => { e.stopPropagation(); removeCoin(s); }} className="opacity-40 hover:opacity-100 hover:text-red-400 cursor-pointer text-sm leading-none">×</span>
++                  )}
++                </button>
+               ))}
+             </div>
+           </div>
+           <div>
+             <label className="text-xs text-muted-foreground">{t("timeframe")}</label>
+-            <div className="flex gap-2 mt-1">
++            <div className="flex flex-wrap gap-2 mt-1">
+               {TFS.map((f) => (
+                 <button key={f} onClick={() => setTf(f)} data-testid={`bt-tf-${f}`}
+                   className={`px-2.5 py-1 rounded-md text-xs mono border ${tf === f ? "bg-gold/15 text-gold border-gold/40" : "border-border"}`}>{f}</button>

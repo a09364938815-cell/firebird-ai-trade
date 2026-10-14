@@ -1,9 +1,10 @@
 import time
 import random
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from market import get_tickers, _fetch_json, BINANCE
+from payments import require_premium
 
 scanner_router = APIRouter(prefix="/api/scanner", tags=["scanner"])
 
@@ -99,7 +100,7 @@ async def get_safe_memecoins(min_safety: int = 75):
 
 
 @scanner_router.get("/memecoins")
-async def memecoins():
+async def memecoins(user: dict = Depends(require_premium)):
     """Scan curated memecoins, score safety + opportunity. Only returns score >= 75."""
     tickers = await _meme_ticker()
     out = []

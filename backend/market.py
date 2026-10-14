@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from db import db
 from auth import get_current_user
+from payments import require_premium
 
 market_router = APIRouter(prefix="/api/market", tags=["market"])
 
@@ -59,14 +60,25 @@ async def _fetch_json(url: str, params: dict):
 
 def _synthetic_klines(symbol: str, interval: str, limit: int):
     base = _BASE_PRICE.get(symbol, 10.0)
-    seed = sum(ord(ch) for ch in symbol) + hash(interval) % 1000
-    rnd = random.Random(seed + int(time.time() // 300))
+    # Per-coin "regime" (stable across refreshes): each coin gets its own trend,
+    # volatility, oscillation and starting RSI bias so indicators — and therefore
+    # scores — differ coin-to-coin even when live data (Binance) is unavailable.
+    sseed = sum(ord(ch) * (i + 1) for i, ch in enumerate(f"{symbol}:{interval}"))
+    regime = random.Random(sseed)
+    tf_scale = {"1m": 0.25, "5m": 0.5, "15m": 0.7, "1h": 1.0, "4h": 1.6, "1d": 2.4}.get(interval, 1.0)
+    trend = (regime.random() - 0.5) * 0.005 * tf_scale   # per-candle trend bias, scaled by timeframe
+    vol = (0.005 + regime.random() * 0.016) * tf_scale   # volatility, low on 1m .. highest on 1d
+    phase = regime.random() * 6.2832
+    cycle = 12 + regime.randint(0, 46)            # oscillation period in candles
+    rnd = random.Random(sseed + int(time.time() // 300))
     candles = []
-    price = base * (0.9 + rnd.random() * 0.2)
+    price = base * (0.9 + regime.random() * 0.2)
     now = int(time.time() * 1000)
     step = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400}.get(interval, 3600) * 1000
     for i in range(limit):
-        drift = (rnd.random() - 0.48) * base * 0.012
+        osc = math.sin((i / cycle) * 6.2832 + phase) * vol * 0.6
+        noise = (rnd.random() - 0.5) * vol
+        drift = (trend + osc + noise) * price
         o = price
         c = max(0.0001, price + drift)
         h = max(o, c) * (1 + rnd.random() * 0.004)
@@ -94,6 +106,28 @@ async def get_klines(symbol: str, interval: str, limit: int = 120):
         result = {"candles": candles, "simulated": True}
     _cache[key] = (time.time(), result)
     return result
+
+
+async def get_price(symbol: str):
+    """Live single price for ANY symbol (not just the preloaded COINS list).
+    Falls back to the latest kline close if the ticker endpoint is blocked."""
+    if not symbol:
+        return None
+    symbol = symbol.upper()
+    try:
+        raw = await _fetch_json(f"{BINANCE}/api/v3/ticker/price", {"symbol": f"{symbol}USDT"})
+        p = float(raw.get("price"))
+        if p > 0:
+            return p
+    except Exception:
+        pass
+    try:
+        d = await get_klines(symbol, "1h", 2)
+        if d.get("candles"):
+            return float(d["candles"][-1][4])
+    except Exception:
+        pass
+    return None
 
 
 async def get_tickers():
@@ -147,7 +181,7 @@ def sma(closes: np.ndarray, period: int) -> float:
     return float(np.mean(closes[-period:]))
 
 
-def compute_signal(candles: List[list]):
+def compute_signal(candles: List[list], change_24h: float = None):
     closes = np.array([c[4] for c in candles], dtype=float)
     if len(closes) < 20:
         return {"action": "HOLD", "score": 50, "rsi": 50, "sma_fast": 0, "sma_slow": 0,
@@ -167,21 +201,35 @@ def compute_signal(candles: List[list]):
         score -= 12
         reasons.append("SMA9 below SMA21 (bearish trend)")
     if r < 30:
-        score += 18
+        score += 10
         reasons.append(f"RSI {r:.0f} oversold")
     elif r > 70:
-        score -= 18
+        score -= 10
         reasons.append(f"RSI {r:.0f} overbought")
     else:
         reasons.append(f"RSI {r:.0f} neutral")
-    if momentum > 1.5:
-        score += 10
+    if momentum > 1:
+        score += 8
         reasons.append(f"Positive momentum +{momentum:.1f}%")
-    elif momentum < -1.5:
-        score -= 10
+    elif momentum < -1:
+        score -= 8
         reasons.append(f"Negative momentum {momentum:.1f}%")
 
-    score = max(1, min(99, score))
+    # Continuous tie-breakers so each coin gets a UNIQUE score (same-direction coins
+    # would otherwise share identical discrete sums). Small, bounded, direction-preserving.
+    score += (50 - r) / 50 * 3                    # RSI distance from mid: ±3
+    score += max(-3.0, min(3.0, momentum * 0.4))  # momentum magnitude: ±3
+
+    # 24h change — the SAME per-coin driver the Memecoin Scanner uses (opportunity).
+    # This is what makes every coin's score distinct (BTC/ETH/SOL/XRP all differ).
+    if change_24h is not None:
+        score += max(-12.0, min(12.0, change_24h * 1.2))
+        if change_24h > 0:
+            reasons.append(f"24h change +{change_24h:.2f}%")
+        elif change_24h < 0:
+            reasons.append(f"24h change {change_24h:.2f}%")
+
+    score = max(0, min(100, round(score)))
     action = "HOLD"
     if score >= 62:
         action = "BUY"
@@ -292,6 +340,21 @@ async def klines(symbol: str = "BTC", interval: str = "1h", limit: int = 120):
     return await get_klines(symbol, interval, min(limit, 500))
 
 
+def _levels(entry: float, action: str, sl_pct: float = None):
+    """Rule-consistent Entry/TP/SL with strict 2:1 R:R (framed long unless SELL)."""
+    sl_pct = max(MIN_STOP_LOSS_PCT, 3.0) if sl_pct is None else sl_pct
+    tp_pct = round(sl_pct * 2, 2)
+    if action == "SELL":
+        stop_loss = entry * (1 + sl_pct / 100)
+        take_profit = entry * (1 - tp_pct / 100)
+    else:
+        stop_loss = entry * (1 - sl_pct / 100)
+        take_profit = entry * (1 + tp_pct / 100)
+    return {"entry": round(entry, 6), "stop_loss": round(stop_loss, 6),
+            "take_profit": round(take_profit, 6), "sl_pct": sl_pct, "tp_pct": tp_pct,
+            "risk_reward": round(tp_pct / sl_pct, 1)}
+
+
 @market_router.get("/signals")
 async def signals(interval: str = "1h"):
     if interval not in INTERVAL_MAP:
@@ -305,15 +368,96 @@ async def signals(interval: str = "1h"):
     out = []
     for c in COINS:
         data = await get_klines(c["symbol"], interval, 80)
-        sig = compute_signal(data["candles"])
         t = tickers.get(c["symbol"], {})
+        sig = compute_signal(data["candles"], t.get("change_24h"))
         confidence = max(0, min(100, round(abs(sig["score"] - 50) * 2)))
+        price = t.get("price") or (float(data["candles"][-1][4]) if data["candles"] else 0.0)
         out.append({"symbol": c["symbol"], "name": c["name"],
-                    "price": t.get("price"), "change_24h": t.get("change_24h"),
-                    "interval": interval, "confidence": confidence,
-                    "generated_at": generated_at, **sig})
+                    "price": price, "change_24h": t.get("change_24h"),
+                    "interval": interval, "confidence": confidence, "kind": "major",
+                    "generated_at": generated_at, **sig, **_levels(price or 0.0, sig["action"])})
     out.sort(key=lambda x: x["score"], reverse=True)
     _cache[cache_key] = (time.time(), out)
+    return out
+
+
+@market_router.get("/signals/shitcoins")
+async def shitcoin_signals(interval: str = "1h", user: dict = Depends(require_premium)):
+    """AI signals for curated, safety-vetted memecoins (Safety Score >= 75).
+    Real Binance-tradeable symbols, enriched with safety verification fields."""
+    if interval not in INTERVAL_MAP:
+        interval = "1h"
+    from scanner import get_safe_memecoins  # lazy import to avoid circular dependency
+    safe = await get_safe_memecoins(75)
+    generated_at = datetime.now(timezone.utc).isoformat()
+    out = []
+    for c in safe:
+        data = await get_klines(c["symbol"], interval, 80)
+        candles = data.get("candles", [])
+        sig = compute_signal(candles, c.get("change_24h"))
+        entry = float(candles[-1][4]) if candles else (c.get("price") or 0.0)
+        confidence = max(0, min(100, round(abs(sig["score"] - 50) * 2)))
+        out.append({
+            "symbol": c["symbol"], "name": c["name"], "chain": c.get("chain"),
+            "price": c.get("price") or entry, "change_24h": c.get("change_24h"),
+            "interval": interval, "confidence": confidence, "kind": "shitcoin",
+            "generated_at": generated_at,
+            "safety_score": c["safety_score"], "liquidity_locked": c["liquidity_locked"],
+            "mint_renounced": c["mint_renounced"], "honeypot_safe": c["mint_renounced"] and c["liquidity_locked"],
+            "holders": c["holders"],
+            **sig, **_levels(entry, sig["action"]),
+        })
+    out.sort(key=lambda x: x["confidence"], reverse=True)
+    return out
+
+
+@market_router.get("/signals/nfts")
+async def nft_signals(user: dict = Depends(require_premium)):
+    """Synthetic AI signals for the Firebird 555 NFT collection (demo/paper).
+    Direction/confidence/reason derived from rarity, floor and a whale heuristic."""
+    tickers = await get_tickers()
+    eth_usd = (tickers.get("ETH", {}) or {}).get("price") or _BASE_PRICE.get("ETH", 3500)
+    from nft_adapters import SUPPORTED_MARKETPLACES
+    mkts = SUPPORTED_MARKETPLACES
+    items = await db.nft_items.find({}, {"_id": 0}).sort("rarity_score", -1).to_list(40)
+    bucket = int(time.time() // 300)  # refresh drift every 5 min
+    out = []
+    for it in items[:16]:
+        rnd = random.Random(it["token_id"] * 97 + bucket)
+        change_24h = round((rnd.random() - 0.4) * 18, 2)
+        holders = 120 + rnd.randint(0, 800)
+        volume_24h = round(2 + rnd.random() * 20, 2)
+        whale = rnd.random() > 0.5
+        rarity = it.get("rarity_score", 300)
+        # Signal heuristic: rising floor + whale accumulation + high rarity => BUY
+        bull = (1 if change_24h > 0 else 0) + (1 if whale else 0) + (1 if rarity >= 500 else 0)
+        action = "BUY" if bull >= 2 else ("SELL" if change_24h < -5 else "HOLD")
+        confidence = max(20, min(95, 45 + bull * 15 + int(abs(change_24h))))
+        reasons = []
+        if whale:
+            reasons.append("Whale accumulation")
+        if change_24h > 0:
+            reasons.append("Rising floor")
+        elif change_24h < 0:
+            reasons.append("Falling floor")
+        if rarity >= 500:
+            reasons.append("High rarity")
+        else:
+            reasons.append("Mid rarity")
+        floor_eth = it.get("floor_price_eth", 0.02)
+        mk = mkts[it["token_id"] % len(mkts)]
+        out.append({
+            "nft_id": it["token_id"], "symbol": f"FIREBIRD #{it['token_id']:03d}",
+            "name": it.get("name"), "image": it.get("image"), "tier": it.get("tier"),
+            "rarity_score": rarity, "floor_price_eth": floor_eth,
+            "floor_price_usd": round(floor_eth * eth_usd, 2), "eth_usd": round(eth_usd, 2),
+            "change_24h": change_24h, "holders": holders, "volume_24h_eth": volume_24h,
+            "best_marketplace": mk["id"], "best_marketplace_name": mk["name"],
+            "requires_proxy": mk["requires_proxy"],
+            "interval": "24h", "action": action, "score": confidence, "confidence": confidence,
+            "kind": "nft", "reason": " + ".join(reasons),
+        })
+    out.sort(key=lambda x: x["confidence"], reverse=True)
     return out
 
 
@@ -363,7 +507,7 @@ async def news():
         ch = t.get("change_24h", 0)
         direction = "surges" if ch >= 0 else "drops"
         items.append({
-            "symbol": c["symbol"],
+            "symbol": c["symbol"], "name": c["name"], "change_24h": ch,
             "title": f"{c['name']} {direction} {abs(ch):.2f}% in 24h",
             "summary": f"{c['name']} ({c['symbol']}) is trading around ${t.get('price')}, "
                        f"with 24h volume of ${t.get('volume', 0):,.0f}.",

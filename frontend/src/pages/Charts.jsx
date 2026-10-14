@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import api from "@/lib/api";
-import { useI18n } from "@/i18n";
+import { useI18n, tReason } from "@/i18n";
 import { Panel, PageTitle, fmt, pnlColor, actionColor } from "@/components/common";
 import CandleChart from "@/components/CandleChart";
 
@@ -10,8 +11,16 @@ const TFS = ["1m", "5m", "15m", "1h", "4h", "1d"];
 
 export default function Charts() {
   const { t, tv } = useI18n();
-  const [symbol, setSymbol] = useState("BTC");
-  const [tf, setTf] = useState("1h");
+  const [params] = useSearchParams();
+  const [symbol, setSymbol] = useState(params.get("symbol") || "BTC");
+  const [tf, setTf] = useState(params.get("tf") || "1h");
+
+  useEffect(() => {
+    const qs = params.get("symbol");
+    if (qs) setSymbol(qs);
+    const qtf = params.get("tf");
+    if (qtf) setTf(qtf);
+  }, [params]);
 
   const klines = useQuery({
     queryKey: ["klines", symbol, tf],
@@ -63,7 +72,7 @@ export default function Charts() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <Panel className="lg:col-span-3" testid="chart-panel"
           title={<span className="font-head">{symbol}/USDT · <span className="mono text-gold">${fmt(last)}</span></span>}
-          right={klines.data?.simulated && <span className="text-[10px] text-muted-foreground">{t("simulated_feed")}</span>}
+          right={klines.data?.simulated && <span className="text-[0.625rem] text-muted-foreground">{t("simulated_feed")}</span>}
         >
           <CandleChart candles={candles} />
         </Panel>
@@ -78,7 +87,7 @@ export default function Charts() {
               <Row label="SMA9" value={`$${fmt(sig.sma_fast)}`} />
               <Row label="SMA21" value={`$${fmt(sig.sma_slow)}`} />
               <Row label={t("momentum")} value={`${fmt(sig.momentum)}%`} cls={pnlColor(sig.momentum)} />
-              <p className="text-xs text-muted-foreground pt-2 border-t border-border/50">{sig.reason}</p>
+              <p className="text-xs text-muted-foreground pt-2 border-t border-border/50">{tReason(sig.reason, t)}</p>
             </div>
           ) : (
             <div className="text-sm text-muted-foreground">{t("loading")}</div>

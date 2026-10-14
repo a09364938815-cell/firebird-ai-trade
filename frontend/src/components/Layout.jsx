@@ -1,15 +1,18 @@
 import React, { useState } from "react";
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   LayoutDashboard, CandlestickChart, Radar, Bot, Hand, ScanSearch,
   FlaskConical, Wallet, Gem, Sparkles, Settings as SettingsIcon,
-  BookOpen, LogOut, Menu, X, Globe, Crown, Bell,
+  BookOpen, LogOut, Menu, X, Globe, Crown, Bell, AlertTriangle, Rocket,
 } from "lucide-react";
 import { Logo } from "./Logo";
 import api from "@/lib/api";
-import { useI18n, LANGUAGES } from "@/i18n";
+import { renderKey, useI18n, LANGUAGES } from "@/i18n";
 import { useAuth } from "@/context/AuthContext";
+import { useAccount } from "wagmi";
+import { shortAddr } from "@/web3/config";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -26,6 +29,7 @@ const NAV = [
   { to: "/nft", key: "nav_nft", icon: Gem },
   { to: "/assistant", key: "nav_assistant", icon: Sparkles },
   { to: "/settings", key: "nav_settings", icon: SettingsIcon },
+  { to: "/subscription", key: "nav_subscription", icon: Rocket },
   { to: "/guide", key: "nav_guide", icon: BookOpen },
 ];
 
@@ -34,6 +38,13 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [verifyDismissed, setVerifyDismissed] = useState(false);
+  const showVerify = user && user.email_verified === false && !verifyDismissed;
+
+  const resendVerify = async () => {
+    try { const { data } = await api.post("/auth/resend-verification"); toast.success(data.message || t("verification_sent")); }
+    catch { toast.error(t("could_not_resend")); }
+  };
 
   const onLogout = async () => {
     await logout();
@@ -84,8 +95,8 @@ export default function Layout() {
   return (
     <div className="min-h-screen grain" dir={dir}>
       {/* Header */}
-      <header className="fixed top-0 inset-x-0 h-16 z-40 glass flex items-center justify-between px-4 md:px-6">
-        <div className="flex items-center gap-3">
+      <header className="fixed top-0 inset-x-0 h-16 z-40 glass flex items-center justify-between gap-2 px-3 md:px-6">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 overflow-hidden">
           <button
             className="lg:hidden p-2 rounded-md hover:bg-secondary"
             onClick={() => setOpen(!open)}
@@ -95,7 +106,10 @@ export default function Layout() {
           </button>
           <Logo />
         </div>
-        <div className="flex items-center gap-2 md:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 shrink-0">
+          <span className="hidden md:inline text-sm text-muted-foreground" data-testid="header-username">
+            {t("welcome")}, <span className="text-foreground font-semibold">{user?.username || user?.name || t("trader")}</span>
+          </span>
           <span
             className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-success/10 text-success border border-success/30"
             data-testid="demo-mode-toggle"
@@ -103,11 +117,12 @@ export default function Layout() {
             <span className="w-2 h-2 rounded-full bg-success ember-pulse" />
             {t("demo_mode")} · ${Number(user?.demo_balance ?? 100).toFixed(0)}
           </span>
+          <WalletHeaderBadge />
           <NotificationsBell />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm hover:bg-secondary border border-border"
+                className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md text-sm hover:bg-secondary border border-border"
                 data-testid="language-switcher-dropdown"
               >
                 <Globe size={16} />
@@ -145,7 +160,7 @@ export default function Layout() {
         } border-border`}
       >
         {sidebar}
-        <div className="p-4 mt-2 text-[10px] text-muted-foreground leading-relaxed">
+        <div className="p-4 mt-2 text-[0.625rem] text-muted-foreground leading-relaxed">
           {t("disclaimer")}
         </div>
       </aside>
@@ -155,20 +170,37 @@ export default function Layout() {
         <div className="lg:hidden fixed inset-0 top-16 z-30">
           <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
           <aside
-            className={`absolute top-0 bottom-0 w-72 glass overflow-y-auto ${
+            className={`absolute top-0 bottom-0 w-72 glass overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)] ${
               dir === "rtl" ? "right-0" : "left-0"
             }`}
           >
             {sidebar}
+            <div className="px-3">
+              <button onClick={onLogout} data-testid="drawer-logout-button"
+                className="w-full mb-6 flex items-center gap-3 px-3 min-h-[44px] rounded-lg text-sm font-semibold text-danger border border-destructive/30 hover:bg-destructive/10">
+                <LogOut size={18} />
+                <span>{t("logout")}</span>
+              </button>
+            </div>
           </aside>
         </div>
       )}
 
       {/* Main */}
       <main
-        className={`pt-20 pb-10 px-4 md:px-8 ${dir === "rtl" ? "lg:pr-72" : "lg:pl-72"}`}
+        className={`pt-20 pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-10 px-4 md:px-8 ${dir === "rtl" ? "lg:pr-72" : "lg:pl-72"}`}
       >
         <div className="max-w-7xl mx-auto fade-up">
+          {showVerify && (
+            <div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm" data-testid="verify-reminder-banner">
+              <AlertTriangle size={16} className="shrink-0" />
+              <span className="flex-1">{t("verify_reminder")}</span>
+              <button onClick={resendVerify} data-testid="verify-reminder-resend"
+                className="text-xs px-3 py-1 rounded-md border border-amber-500/40 hover:bg-amber-500/15 whitespace-nowrap">{t("verify_now")}</button>
+              <button onClick={() => setVerifyDismissed(true)} data-testid="verify-reminder-dismiss"
+                className="p-1 rounded hover:bg-amber-500/15" title={t("dismiss")}><X size={14} /></button>
+            </div>
+          )}
           <Outlet />
         </div>
       </main>
@@ -177,12 +209,23 @@ export default function Layout() {
 }
 
 
+function WalletHeaderBadge() {
+  const { isConnected, address } = useAccount();
+  if (!isConnected) return null;
+  return (
+    <span className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-primary/10 text-primary border border-primary/30" data-testid="header-wallet-badge">
+      <Wallet size={12} />
+      <span className="mono" dir="ltr">{shortAddr(address)}</span>
+    </span>
+  );
+}
+
 function NotificationsBell() {
-  const { t } = useI18n();
+  const { t, tv, lang } = useI18n();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const { data } = useQuery({
-    queryKey: ["notifications"],
+    queryKey: ["notifications", lang],
     queryFn: () => api.get("/notifications").then((r) => r.data),
     refetchInterval: 30000,
   });
@@ -200,7 +243,7 @@ function NotificationsBell() {
         <button className="relative p-2 rounded-md hover:bg-secondary border border-border" data-testid="notifications-bell">
           <Bell size={16} />
           {unread > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-[10px] font-bold text-white flex items-center justify-center num" data-testid="notifications-badge">
+            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-[0.625rem] font-bold text-white flex items-center justify-center num" data-testid="notifications-badge">
               {unread}
             </span>
           )}
@@ -218,8 +261,8 @@ function NotificationsBell() {
         ) : (
           items.slice(0, 15).map((n) => (
             <div key={n.id} className={`px-3 py-2 text-xs border-t border-border/40 ${n.read ? "text-muted-foreground" : "text-foreground"}`} data-testid={`notification-${n.id}`}>
-              <div>{n.message}</div>
-              <div className="mono text-[10px] text-muted-foreground mt-0.5" dir="ltr">{(n.created_at || "").slice(0, 19).replace("T", " ")}</div>
+              <div>{n.key ? renderKey(n.key, n.params, t, tv) : n.message}</div>
+              <div className="mono text-[0.625rem] text-muted-foreground mt-0.5" dir="ltr">{(n.created_at || "").slice(0, 19).replace("T", " ")}</div>
             </div>
           ))
         )}

@@ -6,6 +6,9 @@ import { I18nProvider } from "@/i18n";
 import Layout from "@/components/Layout";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
+import Verify from "@/pages/Verify";
 import Dashboard from "@/pages/Dashboard";
 import Charts from "@/pages/Charts";
 import Signals from "@/pages/Signals";
@@ -17,8 +20,10 @@ import Positions from "@/pages/Positions";
 import NFT from "@/pages/NFT";
 import Assistant from "@/pages/Assistant";
 import Settings from "@/pages/Settings";
+import Subscription from "@/pages/Subscription";
 import Guide from "@/pages/Guide";
 import OwnerPanel from "@/pages/OwnerPanel";
+import { PremiumGate } from "@/components/PremiumGate";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -41,6 +46,9 @@ function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/verify" element={<Verify />} />
             <Route
               path="/"
               element={
@@ -51,15 +59,16 @@ function App() {
             >
               <Route index element={<Dashboard />} />
               <Route path="charts" element={<Charts />} />
-              <Route path="signals" element={<Signals />} />
-              <Route path="auto-trade" element={<AutoTrade />} />
+              <Route path="signals" element={<PremiumGate feature="nav_signals"><Signals /></PremiumGate>} />
+              <Route path="auto-trade" element={<PremiumGate feature="nav_autotrade"><AutoTrade /></PremiumGate>} />
               <Route path="manual" element={<ManualTrade />} />
-              <Route path="scanner" element={<Scanner />} />
+              <Route path="scanner" element={<PremiumGate feature="nav_scanner"><Scanner /></PremiumGate>} />
               <Route path="backtest" element={<Backtest />} />
               <Route path="positions" element={<Positions />} />
               <Route path="nft" element={<NFT />} />
               <Route path="assistant" element={<Assistant />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="subscription" element={<Subscription />} />
               <Route path="guide" element={<Guide />} />
               <Route path="owner" element={<OwnerPanel />} />
             </Route>

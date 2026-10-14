@@ -54,19 +54,19 @@ export default function Dashboard() {
         <Panel title={t("top_signals")} className="lg:col-span-2" testid="dashboard-top-signals">
           <div className="space-y-2">
             {(signals.data || []).slice(0, 6).map((s) => (
-              <div key={s.symbol} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
-                <div className="flex items-center gap-3">
-                  <span className="font-head font-bold w-14">{s.symbol}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full border ${actionColor(s.action)}`}>
-                    {s.action}
+              <div key={s.symbol} className="flex items-center justify-between gap-2 py-2 border-b border-border/50 last:border-0" data-testid={`top-signal-${s.symbol}`}>
+                <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
+                  <span className="font-head font-bold text-sm sm:text-base truncate">{s.symbol}</span>
+                  <span className={`text-[0.625rem] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full border shrink-0 ${actionColor(s.action)}`}>
+                    {tv(s.action)}
                   </span>
                 </div>
-                <div className="flex items-center gap-4">
-                  <span className="mono text-sm">${fmt(s.price)}</span>
-                  <span className={`mono text-sm w-16 text-right ${pnlColor(s.change_24h)}`}>
+                <div className="flex items-center gap-2 sm:gap-4 shrink-0 whitespace-nowrap" dir="ltr">
+                  <span className="mono text-xs sm:text-sm whitespace-nowrap">${fmt(s.price)}</span>
+                  <span className={`mono text-xs sm:text-sm whitespace-nowrap text-right min-w-[3.75rem] ${pnlColor(s.change_24h)}`}>
                     {s.change_24h > 0 ? "+" : ""}{fmt(s.change_24h)}%
                   </span>
-                  <span className="mono text-sm text-gold w-12 text-right">{s.score}</span>
+                  <span className="mono text-xs sm:text-sm text-gold whitespace-nowrap text-right min-w-[1.5rem]">{s.score}</span>
                 </div>
               </div>
             ))}
@@ -112,7 +112,7 @@ export default function Dashboard() {
             {(news.data || []).slice(0, 5).map((n, i) => (
               <div key={`${n.symbol}-${i}`} className="flex gap-2">
                 <Newspaper size={15} className={n.sentiment === "positive" ? "text-success mt-0.5" : "text-danger mt-0.5"} />
-                <div className="text-sm">{n.title}</div>
+                <div className="text-sm">{n.name ? t(n.change_24h >= 0 ? "news_up" : "news_down", { name: n.name, pct: Math.abs(n.change_24h).toFixed(2) }) : n.title}</div>
               </div>
             ))}
           </div>

@@ -33,8 +33,8 @@ export function Logo({ size = 40, withText = true }) {
       />
       {withText && (
         <div className="leading-tight">
-          <div className="font-head font-extrabold text-lg fire-text tracking-tight">
-            FIREBIRD AI
+          <div className="font-head font-extrabold text-[18px] fire-text tracking-tight max-[359px]:hidden">
+            FireBird Crypto
           </div>
         </div>
       )}

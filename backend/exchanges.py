@@ -74,8 +74,8 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
-async def _verify(exchange: str, api_key: str, secret: str) -> dict:
-    adapter = build_adapter(exchange, api_key, secret)
+async def _verify(exchange: str, api_key: str, secret: str, passphrase: str = "") -> dict:
+    adapter = build_adapter(exchange, api_key, secret, passphrase)
     if not adapter:
         return {"ok": False, "message": "Unsupported exchange", "balances": []}
     try:
@@ -93,6 +93,7 @@ class ConnectInput(BaseModel):
     exchange: str
     api_key: str = ""
     api_secret: str = ""
+    api_passphrase: str = ""
 
 
 class LiveToggleInput(BaseModel):
@@ -118,6 +119,8 @@ async def list_connections(user: dict = Depends(get_current_user)):
             "kind": m.get("kind", "cex"),
             "api_key_masked": d.get("api_key_masked") or _mask(d.get("api_key", "")),
             "verified": d.get("verified", False),
+            "read_only": d.get("read_only", None),
+            "read_only_source": d.get("read_only_source", "no_keys"),
             "status_message": d.get("status_message", ""),
             "live_trading": d.get("live_trading", False),
             "balances": d.get("last_balances", []),
@@ -131,14 +134,33 @@ async def connect(data: ConnectInput, user: dict = Depends(get_current_user)):
     ex = data.exchange.lower().strip()
     if ex not in SUPPORTED_IDS:
         raise HTTPException(status_code=400, detail=f"Unsupported exchange: {data.exchange}")
-    result = await _verify(ex, data.api_key.strip(), data.api_secret.strip())
     api_key = data.api_key.strip()
+    secret = data.api_secret.strip()
+    passphrase = data.api_passphrase.strip()
+    result = await _verify(ex, api_key, secret, passphrase)
+
+    # Enforce READ-ONLY: refuse keys that can trade or withdraw (where detectable).
+    read_only = None
+    ro_source = "no_keys"
+    if api_key and result["ok"]:
+        adapter = build_adapter(ex, api_key, secret, passphrase)
+        perms = await adapter.probe_permissions() if hasattr(adapter, "probe_permissions") else {"can_trade": None, "can_withdraw": None, "source": "unknown"}
+        if perms.get("can_trade") or perms.get("can_withdraw"):
+            raise HTTPException(
+                status_code=400,
+                detail="This API key has trade/withdraw permissions. Create a READ-ONLY key (disable Trade and Withdraw).",
+            )
+        ro_source = perms.get("source", "unknown")
+        read_only = perms.get("can_trade") is False and perms.get("can_withdraw") is False
+
     doc = {
         "user_id": user["id"], "exchange": ex,
         "api_key_enc": _encrypt(api_key),
         "api_key_masked": _mask(api_key),
-        "secret_enc": _encrypt(data.api_secret.strip()),
+        "secret_enc": _encrypt(secret),
+        "passphrase_enc": _encrypt(passphrase),
         "verified": result["ok"], "status_message": result["message"],
+        "read_only": read_only, "read_only_source": ro_source,
         "last_balances": result["balances"], "live_trading": False,
         "created_at": _now(), "updated_at": _now(),
     }
@@ -151,7 +173,8 @@ async def connect(data: ConnectInput, user: dict = Depends(get_current_user)):
     else:
         res = await db.exchange_connections.insert_one(doc)
         cid = str(res.inserted_id)
-    return {"id": cid, "verified": result["ok"], "message": result["message"], "balances": result["balances"]}
+    return {"id": cid, "verified": result["ok"], "message": result["message"],
+            "read_only": read_only, "balances": result["balances"]}
 
 
 @exchanges_router.post("/{connection_id}/test")
@@ -160,7 +183,8 @@ async def test_connection(connection_id: str, user: dict = Depends(get_current_u
     if not d:
         raise HTTPException(status_code=404, detail="Connection not found")
     secret = _decrypt(d["secret_enc"]) if d.get("secret_enc") else ""
-    result = await _verify(d["exchange"], _conn_api_key(d), secret)
+    passphrase = _decrypt(d["passphrase_enc"]) if d.get("passphrase_enc") else ""
+    result = await _verify(d["exchange"], _conn_api_key(d), secret, passphrase)
     await db.exchange_connections.update_one({"_id": d["_id"]},
         {"$set": {"verified": result["ok"], "status_message": result["message"],
                   "last_balances": result["balances"], "updated_at": _now()}})
@@ -191,7 +215,8 @@ def _manager_conns(docs):
     conns = []
     for d in docs:
         secret = _decrypt(d["secret_enc"]) if d.get("secret_enc") else ""
-        conns.append({"exchange": d["exchange"], "api_key": _conn_api_key(d), "secret": secret})
+        passphrase = _decrypt(d["passphrase_enc"]) if d.get("passphrase_enc") else ""
+        conns.append({"exchange": d["exchange"], "api_key": _conn_api_key(d), "secret": secret, "passphrase": passphrase})
     return conns
 
 

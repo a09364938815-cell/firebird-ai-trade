@@ -3,20 +3,32 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Search, Star, X, Plus, Wifi, Wallet, TrendingUp, TrendingDown, Minus, Target, Shield, ChevronDown, Bot, Zap } from "lucide-react";
 import api, { formatApiErrorDetail } from "@/lib/api";
-import { useI18n } from "@/i18n";
-import { PageTitle, Panel, fmt, pnlColor } from "@/components/common";
+import { useI18n, tReason } from "@/i18n";
+import { PageTitle, Panel, fmt, pnlColor, toLatin } from "@/components/common";
 import { TradingChart } from "@/components/TradingChart";
 import { MoneyDepth } from "@/components/MoneyDepth";
+import { VerticalSlider } from "@/components/VerticalSlider";
+import { SignalsPanel } from "@/components/SignalsPanel";
+import { useAuth } from "@/context/AuthContext";
+import { RiskLeverageControls, useTradeLimits, riskCheck } from "@/components/RiskLeverageControls";
 
 const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h"];
 
 export default function ManualTrade() {
   const { t, tv } = useI18n();
+  const { user } = useAuth();
+  const emailVerified = user?.email_verified !== false;
   const qc = useQueryClient();
   const [symbol, setSymbol] = useState("BTC");
   const [tf, setTf] = useState("15m");
   const [amount, setAmount] = useState(25);
   const [leverage, setLeverage] = useState(1);
+  const [risk, setRisk] = useState(3);
+  const [highAck, setHighAck] = useState(false);
+  const [levAck, setLevAck] = useState(false);
+  const [armed, setArmed] = useState(false);
+  const limits = useTradeLimits(symbol);
+  useEffect(() => { setArmed(false); }, [symbol, leverage]);
   const [busy, setBusy] = useState(false);
   const [analysisOpen, setAnalysisOpen] = useState(true);
   const [signalsOpen, setSignalsOpen] = useState(true);
@@ -28,6 +40,10 @@ export default function ManualTrade() {
   const [customSymbol, setCustomSymbol] = useState(null);
   const [showDepth, setShowDepth] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1024);
   const [showZones, setShowZones] = useState(true);
+  const [entryInput, setEntryInput] = useState("");
+  const [tpInput, setTpInput] = useState("");
+  const [slInput, setSlInput] = useState("");
+  const [tpslOpen, setTpslOpen] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1024);
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
@@ -86,6 +102,29 @@ export default function ManualTrade() {
   const fallbackPrice = coins.data?.find((c) => c.symbol === symbol)?.price;
   const price = livePrice ?? fallbackPrice;
   const freeBalance = portfolio.data?.cash ?? 0;
+  const inPositions = portfolio.data?.holdings_value ?? 0;
+  const equity = portfolio.data?.total_value ?? (freeBalance + inPositions);
+
+  // Vertical slider percentage ↔ amount (two-way)
+  const percent = freeBalance > 0 ? Math.min(100, Math.round((Number(amount) / freeBalance) * 100)) : 0;
+  const setPercent = (p) => setAmount(+((freeBalance * p) / 100).toFixed(2));
+
+  // Advanced TP/SL (framed for a long/BUY). Base entry = user override or live price.
+  const entryBase = Number(entryInput) || price || 0;
+  const tpPrice = tpInput ? Number(tpInput) : null;
+  const slPrice = slInput ? Number(slInput) : null;
+  const notional = Number(amount) * Number(leverage);
+  const pnlPreview = useMemo(() => {
+    if (!entryBase) return null;
+    const mk = (target) => {
+      if (!target) return null;
+      const pct = (target - entryBase) / entryBase; // + for TP above, - for SL below
+      const usd = notional * pct;
+      const onMargin = Number(amount) > 0 ? (usd / Number(amount)) * 100 : 0;
+      return { usd, onMargin };
+    };
+    return { tp: mk(tpPrice), sl: mk(slPrice) };
+  }, [entryBase, tpPrice, slPrice, notional, amount]);
 
   // If the user already holds this symbol, draw the lines from the live position; else from the AI signal.
   const openPos = (portfolio.data?.positions || []).find((p) => p.symbol === symbol);
@@ -112,6 +151,15 @@ export default function ManualTrade() {
     }
     return null;
   }, [openPos, analysis.data]);
+
+  // Custom TP/SL overrides the chart lines when set; otherwise use position/AI levels.
+  const customLevels = (tpPrice || slPrice || Number(entryInput)) ? {
+    entry: entryBase,
+    take_profit: tpPrice || undefined,
+    stop_loss: slPrice || undefined,
+    source: "custom",
+  } : null;
+  const chartLevels = customLevels || levels;
 
   // Load the full tradeable universe from Binance in the browser (server may be geo-blocked).
   // Cached in localStorage for 24h. Falls back to the server search if the browser is also blocked.
@@ -208,13 +256,24 @@ export default function ManualTrade() {
   };
 
   const trade = async (side) => {
+    if (side === "BUY") {
+      const err = riskCheck({ limits, risk, highAck, leverage, levAck, armed });
+      if (err === "arm") { setArmed(true); toast.warning(t("lev_confirm_again")); return; }
+      if (err) { toast.error(t(err)); return; }
+    }
     setBusy(true);
     try {
-      const { data } = await api.post("/trading/manual", { symbol, side, usd_amount: Number(amount), leverage: Number(leverage) });
+      const payload = { symbol, side, usd_amount: Number(amount), leverage: Number(leverage), risk_pct: risk, high_risk_ack: highAck, leverage_confirmed: levAck && armed };
+      if (side === "BUY" && entryBase > 0) {
+        if (tpPrice) payload.take_profit_pct = +(((tpPrice - entryBase) / entryBase) * 100).toFixed(2);
+        if (slPrice) payload.stop_loss_pct = +(((entryBase - slPrice) / entryBase) * 100).toFixed(2);
+      }
+      const { data } = await api.post("/trading/manual", payload);
       if (data.warning) toast.warning(data.warning);
-      toast.success(side === "BUY" ? `Opened ${symbol} ${data.leverage || leverage}x position` : `Closed ${symbol} · PnL $${data.pnl ?? 0}`);
+      toast.success(side === "BUY" ? t("toast_opened", { symbol, leverage: data.leverage || leverage }) : t("toast_closed", { symbol, pnl: data.pnl ?? 0 }));
       qc.invalidateQueries({ queryKey: ["portfolio"] });
       qc.invalidateQueries({ queryKey: ["me"] });
+      setArmed(false);
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || err.message);
     } finally { setBusy(false); }
@@ -223,7 +282,7 @@ export default function ManualTrade() {
   const closeOne = async (id) => {
     try {
       const { data } = await api.post(`/trading/positions/${id}/close`);
-      toast.success(`Closed · PnL $${data.pnl}`);
+      toast.success(t("toast_closed_pnl", { pnl: data.pnl }));
       qc.invalidateQueries({ queryKey: ["portfolio"] });
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail));
@@ -233,6 +292,14 @@ export default function ManualTrade() {
   return (
     <div>
       <PageTitle title={t("nav_manual")} subtitle={t("disclaimer")} />
+      {!emailVerified && (
+        <div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm" data-testid="unverified-banner">
+          <span className="flex-1">⚠️ {t("verify_email_banner")}</span>
+          <button onClick={async () => { try { const { data } = await api.post("/auth/resend-verification"); toast.success(data.message || t("verification_sent")); } catch (e) { toast.error(t("could_not_resend")); } }}
+            data-testid="banner-resend-verification"
+            className="text-xs px-3 py-1 rounded-md border border-amber-500/40 hover:bg-amber-500/15 whitespace-nowrap">{t("resend")}</button>
+        </div>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-3 space-y-6">
         <Panel title={t("open_position")} testid="manual-trade-panel">
@@ -245,7 +312,7 @@ export default function ManualTrade() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onFocus={() => query && setShowResults(true)}
-                placeholder="Search any coin (e.g. BTC, PEPE, ARB)"
+                placeholder={t("search_coin_placeholder")}
                 data-testid="coin-search-input"
                 className="w-full bg-transparent outline-none text-sm mono" />
             </div>
@@ -255,7 +322,7 @@ export default function ManualTrade() {
                   <button key={r.symbol} onClick={() => pick(r.symbol)} data-testid={`search-result-${r.symbol}`}
                     className="w-full flex items-center justify-between px-3 py-2 hover:bg-secondary text-start">
                     <span className="text-sm font-medium">{r.symbol}</span>
-                    <span className="text-[11px] text-muted-foreground truncate ml-2">{r.name}</span>
+                    <span className="text-[0.6875rem] text-muted-foreground truncate ml-2">{r.name}</span>
                   </button>
                 ))}
               </div>
@@ -266,40 +333,41 @@ export default function ManualTrade() {
           <div className="flex items-center justify-between mb-2" data-testid="selected-symbol-bar">
             <div className="flex items-center gap-2">
               <span className="font-head font-bold text-lg" data-testid="selected-symbol">{symbol}</span>
-              <button onClick={() => addWatch(symbol)} title="Add to watchlist" data-testid="add-watchlist-button"
+              <button onClick={() => addWatch(symbol)} title={t("add_to_watchlist")} data-testid="add-watchlist-button"
                 className="p-1 rounded hover:bg-secondary text-gold">
                 <Plus size={14} />
               </button>
             </div>
             <div className="flex items-center gap-1.5">
               <Wifi size={12} className={liveConnected ? "text-success" : "text-muted-foreground/50"} data-testid="live-indicator" />
-              <span className="text-[10px] text-muted-foreground">{liveConnected ? "Live" : "…"}</span>
+              <span className="text-[0.625rem] text-muted-foreground">{liveConnected ? t("live") : "…"}</span>
             </div>
           </div>
           <div className="text-sm text-muted-foreground mb-2">
             {t("price")}: <span className="mono text-foreground" data-testid="live-price">${fmt(price)}</span>
           </div>
-          <div className="flex items-center justify-between mb-3 px-3 py-2 rounded-lg bg-secondary/40 border border-border" data-testid="free-balance-box">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Wallet size={13} className="text-gold" /> Free Balance
+          <div className="mb-3 px-3 py-2.5 rounded-lg bg-secondary/40 border border-border space-y-1.5" data-testid="balance-summary">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Wallet size={13} className="text-success" /> {t("free_balance")}</span>
+              <span className="mono font-semibold text-success text-sm" data-testid="free-balance-value" dir="ltr">${fmt(freeBalance)}</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="mono font-semibold text-success" data-testid="free-balance-value">${fmt(freeBalance)}</span>
-              <button type="button" onClick={() => setAmount(Math.floor(freeBalance))} disabled={!freeBalance}
-                data-testid="free-balance-max"
-                className="text-[10px] px-2 py-0.5 rounded-md border border-border hover:border-gold hover:text-gold disabled:opacity-40">
-                Max
-              </button>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">{t("in_positions")}</span>
+              <span className="mono text-muted-foreground text-sm" data-testid="in-positions-value" dir="ltr">${fmt(inPositions)}</span>
+            </div>
+            <div className="flex items-center justify-between pt-1.5 border-t border-border/60">
+              <span className="text-xs text-gold font-semibold">{t("total_equity")}</span>
+              <span className="mono font-bold text-gold text-sm" data-testid="total-equity-value" dir="ltr">${fmt(equity)}</span>
             </div>
           </div>
 
           {/* Watchlist */}
           <div className="mb-4">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-              <Star size={12} className="text-gold" /> Watchlist
+              <Star size={12} className="text-gold" /> {t("watchlist")}
             </div>
             {wl.length === 0 ? (
-              <div className="text-[11px] text-muted-foreground">No coins yet — search and tap + to add.</div>
+              <div className="text-[0.6875rem] text-muted-foreground">{t("watchlist_empty")}</div>
             ) : (
               <div className="flex flex-wrap gap-2" data-testid="watchlist">
                 {wl.map((s) => (
@@ -314,44 +382,121 @@ export default function ManualTrade() {
             )}
           </div>
 
+          {/* Amount with vertical percentage slider (Part B) */}
           <label className="text-xs text-muted-foreground">{t("amount_usd")}</label>
-          <input type="number" value={amount} min={1} onChange={(e) => setAmount(e.target.value)}
-            data-testid="manual-amount-input"
-            className="w-full mt-1 mb-3 px-4 py-2.5 rounded-lg bg-input border border-border focus:border-primary outline-none mono" />
-          <label className="text-xs text-muted-foreground flex items-center justify-between">
-            <span>{t("leverage")}</span>
-            <span className={`mono ${leverage >= 10 ? "text-danger" : "text-gold"}`}>{leverage}x</span>
-          </label>
-          <input type="range" min={1} max={50} step={1} value={leverage} onChange={(e) => setLeverage(Number(e.target.value))}
-            data-testid="manual-leverage-input"
-            className="w-full mt-1 mb-1 accent-orange-500" />
-          {leverage >= 10 && (
-            <div className="text-[11px] text-danger mb-3" data-testid="leverage-warning">
-              ⚠️ {t("high_leverage_warning")}
+          <div className="flex items-start gap-3 mt-1 mb-2">
+            <VerticalSlider value={percent} onChange={setPercent} />
+            <div className="flex-1">
+              <input type="text" inputMode="decimal" dir="ltr" value={amount} onChange={(e) => setAmount(toLatin(e.target.value))}
+                data-testid="manual-amount-input"
+                className="w-full px-4 py-2.5 rounded-lg bg-input border border-border focus:border-primary outline-none mono" />
+              <div className="grid grid-cols-4 gap-1.5 mt-2" data-testid="amount-quick-buttons">
+                {[25, 50, 75, 100].map((p) => (
+                  <button key={p} type="button" onClick={() => setPercent(p)} data-testid={`amount-pct-${p}`}
+                    className={`py-1 rounded-md text-[0.6875rem] mono border ${percent === p ? "bg-gold/15 text-gold border-gold/40" : "border-border hover:bg-secondary"}`}>
+                    {p}%
+                  </button>
+                ))}
+              </div>
+              {percent > 75 && (
+                <div className="text-[0.6875rem] text-amber-400 mt-2" data-testid="amount-high-warning">
+                  ⚠️ {t("high_exposure", { percent })}
+                </div>
+              )}
             </div>
-          )}
+          </div>
+          <RiskLeverageControls limits={limits} freeBalance={freeBalance} risk={risk} setRisk={setRisk} leverage={leverage} setLeverage={setLeverage}
+            highAck={highAck} setHighAck={setHighAck} levAck={levAck} setLevAck={setLevAck} setAmount={setAmount} prefix="manual" />
+
+          {/* Advanced TP/SL (Part C) */}
+          <div className="mt-3 mb-2 rounded-lg border border-border" data-testid="advanced-tpsl">
+            <button type="button" onClick={() => setTpslOpen((v) => !v)} data-testid="tpsl-toggle"
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold">
+              <span className="flex items-center gap-1.5"><Target size={13} className="text-gold" /> {t("advanced_tpsl")}</span>
+              <ChevronDown size={15} className={`transition-transform ${tpslOpen ? "rotate-180" : ""}`} />
+            </button>
+            {tpslOpen && (
+              <div className="px-3 pb-3 space-y-2.5">
+                <div>
+                  <label className="text-[0.625rem] text-muted-foreground">{t("entry_optional")}</label>
+                  <input type="text" inputMode="decimal" dir="ltr" value={entryInput} onChange={(e) => setEntryInput(toLatin(e.target.value))}
+                    placeholder={price ? String(fmt(price)) : t("market")} data-testid="entry-input"
+                    className="w-full mt-0.5 px-3 py-1.5 rounded-md bg-input border border-border focus:border-primary outline-none mono text-sm" />
+                </div>
+                <div>
+                  <label className="text-[0.625rem] text-success">{t("take_profit_price")}</label>
+                  <input type="text" inputMode="decimal" dir="ltr" value={tpInput} onChange={(e) => setTpInput(toLatin(e.target.value))}
+                    placeholder={t("tp_example")} data-testid="tp-input"
+                    className="w-full mt-0.5 px-3 py-1.5 rounded-md bg-input border border-border focus:border-success outline-none mono text-sm" />
+                  <div className="grid grid-cols-5 gap-1 mt-1.5" data-testid="tp-quick">
+                    {[1, 2, 5, 10, 20].map((p) => (
+                      <button key={p} type="button" onClick={() => setTpInput((entryBase * (1 + p / 100)).toFixed(entryBase >= 1000 ? 2 : 6))}
+                        data-testid={`tp-plus-${p}`}
+                        className="py-1 rounded-md text-[0.625rem] mono border border-success/30 text-success hover:bg-success/10">+{p}%</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[0.625rem] text-danger">{t("stop_loss_price")}</label>
+                  <input type="text" inputMode="decimal" dir="ltr" value={slInput} onChange={(e) => setSlInput(toLatin(e.target.value))}
+                    placeholder={t("sl_example")} data-testid="sl-input"
+                    className="w-full mt-0.5 px-3 py-1.5 rounded-md bg-input border border-border focus:border-danger outline-none mono text-sm" />
+                  <div className="grid grid-cols-4 gap-1 mt-1.5" data-testid="sl-quick">
+                    {[1, 2, 5, 10].map((p) => (
+                      <button key={p} type="button" onClick={() => setSlInput((entryBase * (1 - p / 100)).toFixed(entryBase >= 1000 ? 2 : 6))}
+                        data-testid={`sl-minus-${p}`}
+                        className="py-1 rounded-md text-[0.625rem] mono border border-destructive/30 text-danger hover:bg-destructive/10">-{p}%</button>
+                    ))}
+                  </div>
+                </div>
+                {(pnlPreview?.tp || pnlPreview?.sl) && (
+                  <div className="text-[0.6875rem] mono space-y-1 pt-1 border-t border-border/60" data-testid="pnl-preview">
+                    {pnlPreview.tp && (
+                      <div className="flex justify-between text-success" data-testid="pnl-tp">
+                        <span>{t("if_tp_hits")}</span>
+                        <span dir="ltr">+${fmt(Math.abs(pnlPreview.tp.usd))} (+{fmt(Math.abs(pnlPreview.tp.onMargin))}%)</span>
+                      </div>
+                    )}
+                    {pnlPreview.sl && (
+                      <div className="flex justify-between text-danger" data-testid="pnl-sl">
+                        <span>{t("if_sl_hits")}</span>
+                        <span dir="ltr">-${fmt(Math.abs(pnlPreview.sl.usd))} (-{fmt(Math.abs(pnlPreview.sl.onMargin))}%)</span>
+                      </div>
+                    )}
+                    <div className="text-[0.5625rem] text-muted-foreground/70">{t("pnl_preview_note", { amount: fmt(amount), leverage })}</div>
+                  </div>
+                )}
+                {(tpInput || slInput || entryInput) && (
+                  <button type="button" onClick={() => { setEntryInput(""); setTpInput(""); setSlInput(""); }}
+                    data-testid="tpsl-clear" className="w-full py-1 rounded-md text-[0.625rem] border border-border hover:bg-secondary text-muted-foreground">
+                    {t("clear_tpsl")}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           {/* One-Tap Trade — appears when a signal was tapped; shows AI Direction/Entry/TP/SL */}
           {suggested === symbol && levels && (
             <div className="mb-3 p-3 rounded-lg border border-gold/40 bg-gold/5" data-testid="one-tap-trade">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] text-gold font-semibold flex items-center gap-1"><Zap size={12} /> One-Tap Trade</span>
+                <span className="text-[0.6875rem] text-gold font-semibold flex items-center gap-1"><Zap size={12} /> {t("one_tap_trade")}</span>
                 {(() => { const d = DIR[analysis.data?.action || "HOLD"] || DIR.HOLD; return (
-                  <span className={`text-[11px] px-2 py-0.5 rounded-md border font-semibold flex items-center gap-1 ${d.cls}`} data-testid="one-tap-direction">
-                    <d.Icon size={11} /> {d.label}
+                  <span className={`text-[0.6875rem] px-2 py-0.5 rounded-md border font-semibold flex items-center gap-1 ${d.cls}`} data-testid="one-tap-direction">
+                    <d.Icon size={11} /> {tv(d.label)}
                   </span>
                 ); })()}
               </div>
-              <div className="space-y-1 text-[11px] mono">
-                <div className="flex justify-between"><span className="text-muted-foreground">Entry</span><span>${fmt(levels.entry)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">TP</span><span className="text-success">${fmt(levels.take_profit)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">SL</span><span className="text-danger">${fmt(levels.stop_loss)}</span></div>
+              <div className="space-y-1 text-[0.6875rem] mono">
+                <div className="flex justify-between"><span className="text-muted-foreground">{t("entry")}</span><span dir="ltr">${fmt(levels.entry)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">{t("tp_short")}</span><span className="text-success" dir="ltr">${fmt(levels.take_profit)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">{t("sl_short")}</span><span className="text-danger" dir="ltr">${fmt(levels.stop_loss)}</span></div>
               </div>
             </div>
           )}
           <div className="grid grid-cols-2 gap-3 mt-3">
             <button disabled={busy} onClick={() => trade("BUY")} data-testid="manual-buy-button"
               className={`py-2.5 rounded-lg font-semibold bg-success/20 text-success border border-success/40 hover:bg-success/30 disabled:opacity-50 ${suggested === symbol && analysis.data?.action === "BUY" ? "ring-2 ring-success" : ""}`}>
-              {t("buy")}
+              {armed ? t("confirm_again") : t("buy")}
             </button>
             <button disabled={busy} onClick={() => trade("SELL")} data-testid="manual-sell-button"
               className={`py-2.5 rounded-lg font-semibold bg-destructive/20 text-danger border border-destructive/40 hover:bg-destructive/30 disabled:opacity-50 ${suggested === symbol && analysis.data?.action === "SELL" ? "ring-2 ring-danger" : ""}`}>
@@ -360,129 +505,11 @@ export default function ManualTrade() {
           </div>
         </Panel>
 
-        {/* Auto Signals — reuses Firebird AI Core, cached 60s. Click to load into chart + order form. */}
-        <div className="glass card-hover rounded-2xl p-5 md:p-6" data-testid="auto-signals-panel">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-head font-semibold text-lg flex items-center gap-2">
-              <Zap size={17} className="text-gold" /> Auto Signals
-            </h3>
-            <button onClick={() => setSignalsOpen((v) => !v)} data-testid="auto-signals-toggle"
-              className="lg:hidden p-1 rounded hover:bg-secondary">
-              <ChevronDown size={18} className={`transition-transform ${signalsOpen ? "rotate-180" : ""}`} />
-            </button>
-          </div>
-          <div className={`${signalsOpen ? "" : "hidden"} lg:block`}>
-            {/* Timeframe selector for Auto Signals */}
-            <div className="flex gap-1 mb-3" data-testid="auto-signals-tf">
-              {TIMEFRAMES.map((f) => (
-                <button key={f} onClick={() => setSigTf(f)} data-testid={`auto-signals-tf-${f}`}
-                  className={`flex-1 py-1 rounded-md text-[11px] mono border ${sigTf === f ? "bg-primary/15 text-primary border-primary/40" : "border-border hover:bg-secondary"}`}>
-                  {f}
-                </button>
-              ))}
-            </div>
-
-            {/* Add any token → dropdown → on-demand analysis */}
-            <div className="relative mb-3">
-              <form onSubmit={quickAnalyze} className="flex items-center gap-2">
-                <div className="flex items-center gap-2 flex-1 px-3 py-2 rounded-lg bg-input border border-border focus-within:border-primary">
-                  <Search size={13} className="text-muted-foreground shrink-0" />
-                  <input value={sigQuery} onChange={(e) => setSigQuery(e.target.value)}
-                    onFocus={() => sigQuery && setSigShow(true)}
-                    placeholder="Add any token (e.g., ARB, OP, TIA)" data-testid="auto-signals-search"
-                    className="w-full bg-transparent outline-none text-sm mono" />
-                </div>
-                <button type="submit" data-testid="auto-signals-analyze"
-                  className="px-3 py-2 rounded-lg text-xs font-semibold bg-gold/15 text-gold border border-gold/40 hover:bg-gold/25">
-                  Analyze
-                </button>
-              </form>
-              {sigShow && sigResults.length > 0 && (
-                <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto glass rounded-lg border border-border" data-testid="auto-signals-results">
-                  {sigResults.map((r) => (
-                    <button key={r.symbol} onClick={() => pickCustom(r.symbol)} data-testid={`auto-signals-result-${r.symbol}`}
-                      className="w-full flex items-center justify-between px-3 py-2 hover:bg-secondary text-start">
-                      <span className="text-sm font-medium">{r.symbol}</span>
-                      <span className="text-[11px] text-muted-foreground truncate ml-2">{r.name}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Custom token analysis card (on-demand, not saved) */}
-            {customSymbol && (
-              <div className="mb-3 p-3 rounded-lg border border-gold/40 bg-gold/5" data-testid="custom-signal-card">
-                {(() => {
-                  const cd = customAnalysis.data;
-                  const d = DIR[cd?.action || "HOLD"] || DIR.HOLD;
-                  return (
-                    <>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="font-head font-bold text-sm">{customSymbol}/USDT</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground mono">{sigTf}</span>
-                          <button onClick={() => setCustomSymbol(null)} data-testid="custom-signal-remove" className="p-0.5 rounded hover:bg-destructive/20 hover:text-danger"><X size={12} /></button>
-                        </div>
-                      </div>
-                      {!cd ? (
-                        <div className="text-[11px] text-muted-foreground py-2">Analyzing {customSymbol} on {sigTf}…</div>
-                      ) : (
-                        <button onClick={() => pickSignal({ symbol: customSymbol })} className="w-full text-start" data-testid="custom-signal-load">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className={`text-[11px] px-2 py-0.5 rounded-md border font-semibold flex items-center gap-1 ${d.cls}`}><d.Icon size={11} /> {d.label}</span>
-                            <span className="mono text-[11px] text-muted-foreground">{cd.confidence ?? 0}/100</span>
-                          </div>
-                          <div className="w-full h-1.5 rounded-full bg-secondary overflow-hidden mb-1.5">
-                            <div className="h-full rounded-full bg-gradient-to-r from-gold to-primary" style={{ width: `${cd.confidence ?? 0}%` }} />
-                          </div>
-                          <div className="text-[11px] text-muted-foreground mb-1.5">{(cd.reason || "").split(";")[0]}</div>
-                          <div className="grid grid-cols-3 gap-1 text-[10px] mono">
-                            <div><span className="text-muted-foreground">Entry </span>${fmt(cd.entry)}</div>
-                            <div className="text-success"><span className="text-muted-foreground">TP </span>${fmt(cd.take_profit)}</div>
-                            <div className="text-danger"><span className="text-muted-foreground">SL </span>${fmt(cd.stop_loss)}</div>
-                          </div>
-                          <div className="text-[10px] text-primary mt-1.5">Tap to load on chart →</div>
-                        </button>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-            )}
-
-            {topSignals.length === 0 ? (
-              <div className="text-sm text-muted-foreground py-4 text-center" data-testid="auto-signals-empty">
-                {signals.isLoading ? "Scanning the market…" : "No signals yet."}
-              </div>
-            ) : (
-              <div className="space-y-2" data-testid="auto-signals-list">
-                {topSignals.map((s) => {
-                  const d = DIR[s.action] || DIR.HOLD;
-                  return (
-                    <button key={s.symbol} onClick={() => pickSignal(s)} data-testid={`auto-signal-${s.symbol}`}
-                      className={`w-full text-start p-3 rounded-lg border transition-colors hover:border-primary/50 ${symbol === s.symbol ? "bg-primary/10 border-primary/40" : "bg-secondary/40 border-border"}`}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-head font-bold text-sm">{s.symbol}/USDT</span>
-                        <span className={`text-[11px] px-2 py-0.5 rounded-md border font-semibold flex items-center gap-1 ${d.cls}`}>
-                          <d.Icon size={11} /> {d.label}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
-                          <div className="h-full rounded-full bg-gradient-to-r from-gold to-primary" style={{ width: `${s.confidence ?? 0}%` }} />
-                        </div>
-                        <span className="mono text-[11px] text-muted-foreground">{s.confidence ?? 0}</span>
-                      </div>
-                      <div className="text-[11px] text-muted-foreground truncate">{(s.reason || "").split(";")[0]}</div>
-                      <div className="text-[10px] text-muted-foreground/70 mt-0.5">{timeAgo(s.generated_at)}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
+        <SignalsPanel
+          onPick={(sym, interval) => { setSymbol(sym); setSuggested(sym); if (interval) setTf(interval); }}
+          freeBalance={freeBalance}
+          defaultLeverage={leverage}
+        />
         </div>
 
         <Panel
@@ -492,12 +519,12 @@ export default function ManualTrade() {
                 <span className="mono text-sm text-muted-foreground">${fmt(price)}</span></span>
               <div className="flex items-center gap-2 flex-wrap">
                 <button onClick={() => setShowDepth((v) => !v)} data-testid="toggle-money-depth"
-                  className={`px-2 py-1 rounded-md text-[11px] border ${showDepth ? "bg-gold/15 text-gold border-gold/40" : "border-border text-muted-foreground hover:bg-secondary"}`}>
-                  Money Depth
+                  className={`px-2 py-1 rounded-md text-[0.6875rem] border ${showDepth ? "bg-gold/15 text-gold border-gold/40" : "border-border text-muted-foreground hover:bg-secondary"}`}>
+                  {t("money_depth")}
                 </button>
                 <button onClick={() => setShowZones((v) => !v)} data-testid="toggle-sr-zones"
-                  className={`px-2 py-1 rounded-md text-[11px] border ${showZones ? "bg-primary/15 text-primary border-primary/40" : "border-border text-muted-foreground hover:bg-secondary"}`}>
-                  S/R Zones
+                  className={`px-2 py-1 rounded-md text-[0.6875rem] border ${showZones ? "bg-primary/15 text-primary border-primary/40" : "border-border text-muted-foreground hover:bg-secondary"}`}>
+                  {t("sr_zones")}
                 </button>
                 <div className="flex gap-1" data-testid="chart-timeframes">
                   {TIMEFRAMES.map((f) => (
@@ -514,7 +541,7 @@ export default function ManualTrade() {
           <div className="flex gap-2">
             {showDepth && <MoneyDepth symbol={symbol} interval={tf} currentPrice={price} />}
             <div className="flex-1 min-w-0">
-              <TradingChart symbol={symbol} interval={tf} levels={levels} showZones={showZones} />
+              <TradingChart symbol={symbol} interval={tf} levels={chartLevels} showZones={showZones} />
             </div>
           </div>
         </Panel>
@@ -524,7 +551,7 @@ export default function ManualTrade() {
           <div className="glass card-hover rounded-2xl p-5 md:p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-head font-semibold text-lg flex items-center gap-2">
-                <Bot size={18} className="text-primary" /> Bot Analysis
+                <Bot size={18} className="text-primary" /> {t("bot_analysis")}
               </h3>
               <button onClick={() => setAnalysisOpen((v) => !v)} data-testid="bot-analysis-toggle"
                 className="lg:hidden p-1 rounded hover:bg-secondary">
@@ -574,37 +601,38 @@ const DIR = {
   HOLD: { label: "HOLD", cls: "bg-secondary text-muted-foreground border-border", Icon: Minus },
 };
 
-function timeAgo(iso) {
+function timeAgo(iso, t) {
   if (!iso) return "";
   const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
-  if (s < 60) return `${s}s ago`;
+  if (s < 60) return t ? t("ago_s", { n: s }) : `${s}s ago`;
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m} min ago`;
+  if (m < 60) return t ? t("ago_m", { n: m }) : `${m} min ago`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  if (h < 24) return t ? t("ago_h", { n: h }) : `${h}h ago`;
+  return t ? t("ago_d", { n: Math.floor(h / 24) }) : `${Math.floor(h / 24)}d ago`;
 }
 
 function BotAnalysis({ symbol, tf, data, levels, hasPosition }) {
+  const { t, tv } = useI18n();
   if (!data) {
-    return <div className="text-sm text-muted-foreground py-6 text-center" data-testid="bot-analysis-loading">Analyzing {symbol} on {tf}…</div>;
+    return <div className="text-sm text-muted-foreground py-6 text-center" data-testid="bot-analysis-loading">{t("analyzing_on", { symbol, tf })}</div>;
   }
   const dir = DIR[data.action] || DIR.HOLD;
   const conf = data.confidence ?? 0;
-  const reasons = (data.reason || "").split(";").map((r) => r.trim()).filter(Boolean);
+  const reasons = (data.reason || "").split(";").map((r) => tReason(r.trim(), t)).filter(Boolean);
   return (
     <div className="space-y-4">
       {/* Direction + confidence */}
       <div className={`flex items-center justify-between px-3 py-2.5 rounded-lg border ${dir.cls}`} data-testid="bot-direction">
         <span className="flex items-center gap-2 font-head font-bold text-lg">
-          <dir.Icon size={18} /> {dir.label}
+          <dir.Icon size={18} /> {tv(dir.label)}
         </span>
         <span className="text-xs text-muted-foreground">{symbol} · {tf}</span>
       </div>
       <div>
         <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-          <span>Confidence</span>
-          <span className="mono text-foreground" data-testid="bot-confidence">{conf}/100</span>
+          <span>{t("confidence")}</span>
+          <span className="mono text-foreground" data-testid="bot-confidence" dir="ltr">{conf}/100</span>
         </div>
         <div className="w-full h-2 rounded-full bg-secondary overflow-hidden">
           <div className="h-full rounded-full bg-gradient-to-r from-gold to-primary transition-all" style={{ width: `${conf}%` }} />
@@ -613,7 +641,7 @@ function BotAnalysis({ symbol, tf, data, levels, hasPosition }) {
 
       {/* Reasoning */}
       <div>
-        <div className="text-xs text-muted-foreground mb-1.5">Reasoning</div>
+        <div className="text-xs text-muted-foreground mb-1.5">{t("reasoning")}</div>
         <ul className="space-y-1.5" data-testid="bot-reasoning">
           {reasons.map((r, i) => (
             <li key={i} className="text-xs flex items-start gap-1.5">
@@ -627,20 +655,20 @@ function BotAnalysis({ symbol, tf, data, levels, hasPosition }) {
       {/* Entry / TP / SL */}
       {levels && (
         <div className="space-y-2" data-testid="bot-levels">
-          <LevelRow color="#f7931a" Icon={Target} label="Entry" value={levels.entry} />
-          <LevelRow color="#26a17b" Icon={Target} label="Take Profit" value={levels.take_profit} />
-          <LevelRow color="#e5484d" Icon={Shield} label="Stop Loss" value={levels.stop_loss} />
+          <LevelRow color="#f7931a" Icon={Target} label={t("entry")} value={levels.entry} />
+          <LevelRow color="#26a17b" Icon={Target} label={t("tp_label")} value={levels.take_profit} />
+          <LevelRow color="#e5484d" Icon={Shield} label={t("sl_label")} value={levels.stop_loss} />
         </div>
       )}
 
       {/* Risk:Reward */}
       <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-secondary/40 border border-border">
-        <span className="text-xs text-muted-foreground">Risk : Reward</span>
-        <span className="mono font-semibold text-gold" data-testid="bot-risk-reward">1 : {data.risk_reward ?? 2}</span>
+        <span className="text-xs text-muted-foreground">{t("risk_reward")}</span>
+        <span className="mono font-semibold text-gold" data-testid="bot-risk-reward" dir="ltr">1 : {data.risk_reward ?? 2}</span>
       </div>
 
-      <div className="text-[10px] text-muted-foreground text-center" data-testid="bot-levels-source">
-        {hasPosition ? "Levels live from your open position" : "Suggested levels · not financial advice"}
+      <div className="text-[0.625rem] text-muted-foreground text-center" data-testid="bot-levels-source">
+        {hasPosition ? t("levels_from_position") : t("levels_suggested")}
       </div>
     </div>
   );
@@ -653,7 +681,7 @@ function LevelRow({ color, Icon, label, value }) {
         <span className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
         <Icon size={13} style={{ color }} /> {label}
       </span>
-      <span className="mono font-medium">${fmt(value)}</span>
+      <span className="mono font-medium" dir="ltr">${fmt(value)}</span>
     </div>
   );
 }

@@ -26,7 +26,7 @@ export default function Guide() {
               <div className="flex items-start gap-4">
                 <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center shrink-0 relative">
                   <s.icon size={20} className="text-primary" />
-                  <span className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-primary text-[10px] font-bold text-white flex items-center justify-center num">{i + 1}</span>
+                  <span className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-primary text-[0.625rem] font-bold text-white flex items-center justify-center num">{i + 1}</span>
                 </div>
                 <div>
                   <div className="font-head font-semibold mb-1">

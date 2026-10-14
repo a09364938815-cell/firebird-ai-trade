@@ -39,18 +39,25 @@ export default function Login() {
         <p className="text-sm text-muted-foreground text-center mb-6">{t("tagline")}</p>
         <form onSubmit={submit} className="space-y-4">
           <div>
-            <label className="text-xs text-muted-foreground">{t("email")}</label>
+            <label className="text-xs text-muted-foreground">{t("username_or_email")}</label>
             <input
-              type="email"
+              type="text"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              autoCapitalize="none"
+              autoCorrect="off"
               data-testid="login-email-input"
               className="w-full mt-1 px-4 py-2.5 rounded-lg bg-input border border-border focus:border-primary outline-none transition-colors"
             />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">{t("password")}</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs text-muted-foreground">{t("password")}</label>
+              <Link to="/forgot-password" className="text-xs text-primary hover:underline" data-testid="forgot-password-link">
+                {t("forgot_password_q")}
+              </Link>
+            </div>
             <input
               type="password"
               value={password}

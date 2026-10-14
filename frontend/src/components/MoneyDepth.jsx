@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { API } from "@/lib/api";
+import { useI18n } from "@/i18n";
 
 const BUCKETS = 24;
 const GREEN = "#26a17b";
@@ -40,6 +41,7 @@ function computeDepth(candles) {
 }
 
 export function MoneyDepth({ symbol, interval, currentPrice, className = "" }) {
+  const { t } = useI18n();
   const [depth, setDepth] = useState(null);
   const timer = useRef(null);
 
@@ -56,7 +58,7 @@ export function MoneyDepth({ symbol, interval, currentPrice, className = "" }) {
 
   return (
     <div className={`w-[92px] shrink-0 ${className}`} data-testid="money-depth">
-      <div className="text-[10px] text-muted-foreground mb-1 text-center">Money Depth</div>
+      <div className="text-[0.625rem] text-muted-foreground mb-1 text-center">{t("money_depth")}</div>
       <div className="h-[420px] flex flex-col-reverse justify-between rounded-md bg-secondary/20 border border-border/60 py-1 px-0.5">
         {depth ? depth.rows.map((r, i) => {
           const lvlLo = depth.lo + i * depth.step;
@@ -65,19 +67,19 @@ export function MoneyDepth({ symbol, interval, currentPrice, className = "" }) {
           const buyPct = Math.min(100, (r.buy / depth.max) * 100);
           const sellPct = Math.min(100, (r.sell / depth.max) * 100);
           return (
-            <div key={i} title={`$${abbrUsd(lvlLo)} · In $${abbrUsd(r.buy)} · Out $${abbrUsd(r.sell)}`}
+            <div key={i} title={`$${abbrUsd(lvlLo)} · ${t("in_label")} $${abbrUsd(r.buy)} · ${t("out_label")} $${abbrUsd(r.sell)}`}
               className={`flex flex-col justify-center gap-[1px] ${isCur ? "bg-gold/15 rounded-sm" : ""}`} style={{ flex: 1 }}>
               <div className="h-[3px] self-end rounded-sm" style={{ width: `${buyPct}%`, background: isCur ? "#f7931a" : GREEN }} />
               <div className="h-[3px] self-end rounded-sm" style={{ width: `${sellPct}%`, background: isCur ? "#f7931a" : RED }} />
             </div>
           );
         }) : (
-          <div className="flex-1 flex items-center justify-center text-[9px] text-muted-foreground">…</div>
+          <div className="flex-1 flex items-center justify-center text-[0.5625rem] text-muted-foreground">…</div>
         )}
       </div>
-      <div className="flex justify-center gap-2 mt-1 text-[9px] text-muted-foreground">
-        <span className="flex items-center gap-0.5"><span className="w-2 h-1 rounded-sm" style={{ background: GREEN }} />In</span>
-        <span className="flex items-center gap-0.5"><span className="w-2 h-1 rounded-sm" style={{ background: RED }} />Out</span>
+      <div className="flex justify-center gap-2 mt-1 text-[0.5625rem] text-muted-foreground">
+        <span className="flex items-center gap-0.5"><span className="w-2 h-1 rounded-sm" style={{ background: GREEN }} />{t("in_label")}</span>
+        <span className="flex items-center gap-0.5"><span className="w-2 h-1 rounded-sm" style={{ background: RED }} />{t("out_label")}</span>
       </div>
     </div>
   );

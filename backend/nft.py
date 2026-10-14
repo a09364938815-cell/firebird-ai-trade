@@ -13,61 +13,79 @@ from emergentintegrations.llm.chat import LlmChat, UserMessage
 nft_router = APIRouter(prefix="/api/nft", tags=["nft"])
 
 RARE_IMG = {
-    1: "https://static.prod-images.emergentagent.com/jobs/2857b787-092b-48b2-8f7f-f9178af03cef/images/7eb706671719b6300de76fd1a27822676d3b966d1f6e7686a7fe787aa53410dd.jpeg",
-    88: "https://static.prod-images.emergentagent.com/jobs/2857b787-092b-48b2-8f7f-f9178af03cef/images/e910b932f8406358627e42c74c20d1030be9e3858462aeced6848176131be9ab.jpeg",
-    111: "https://static.prod-images.emergentagent.com/jobs/2857b787-092b-48b2-8f7f-f9178af03cef/images/8518770a414a86f704a5cf31d74572b7ee774fc7f0722389b9997d66b7cee68e.jpeg",
-    333: "https://static.prod-images.emergentagent.com/jobs/2857b787-092b-48b2-8f7f-f9178af03cef/images/c54db03a667c057998be434756d5d1353f5565122da61eecb1012ed50046fb17.jpeg",
-    444: "https://static.prod-images.emergentagent.com/jobs/2857b787-092b-48b2-8f7f-f9178af03cef/images/c688d726f2a1ad366ad3d6e9abb8cdb1bf350d06b00a9690630590b7ba9b19a7.jpeg",
-    555: "https://static.prod-images.emergentagent.com/jobs/2857b787-092b-48b2-8f7f-f9178af03cef/images/3057ba0f518b8d54db08a7c870fe20e9f07a8b2d31df4e105f3d8a1b9339902a.jpeg",
+    1: "https://static.prod-images.emergentagent.com/jobs/2857b787-092b-48b2-8f7f-f9178af03cef/images/39f181bb9ec40a48f4c218e4cb7f6bcfbbf9d8c77039edf1725282bd7fc28167.jpeg",
+    88: "https://static.prod-images.emergentagent.com/jobs/2857b787-092b-48b2-8f7f-f9178af03cef/images/6617ad992ae5ea2a695bbc7a972eea345838854da974b7b17b3db9417c24a4f4.jpeg",
+    111: "https://static.prod-images.emergentagent.com/jobs/2857b787-092b-48b2-8f7f-f9178af03cef/images/f87a2aa5b03006e8dd6f80f90cd47968ba5cfd670fac056ffa98af93cafb3e0a.jpeg",
+    333: "https://static.prod-images.emergentagent.com/jobs/2857b787-092b-48b2-8f7f-f9178af03cef/images/56f432ddc280e602b54454346bf5a07b4c15738afeecfefba74154828fdea122.jpeg",
+    444: "https://static.prod-images.emergentagent.com/jobs/2857b787-092b-48b2-8f7f-f9178af03cef/images/9af776bd6efccb277974ebab1373d8a9437a7e23ae723e822a13e4cd4dd1a1f0.jpeg",
+    555: "https://static.prod-images.emergentagent.com/jobs/2857b787-092b-48b2-8f7f-f9178af03cef/images/79e2b3f2d87cecf0a280cb213c4e53fa24e8f8cb55cdb602875a6233be4971d7.jpeg",
 }
 
 RARE_NAMES = {
-    1: "Sovereign Ember", 88: "Cosmic Flame", 111: "Cybernetic Phoenix",
-    333: "Golden Ash", 444: "Nebula Wing", 555: "Eternal Rebirth",
+    1: "Sovereign Ember", 88: "Cosmic Flame", 111: "Crystal Phoenix",
+    333: "Golden Ash", 444: "Radiant Wing", 555: "Eternal Legend",
 }
 
 RARE_STORY = {
-    1: "The first flame. Sovereign Ember remembers every empire it has reduced to ash. Where its crown of fire passes, thrones melt and kingdoms are rewritten.",
-    88: "Born between dying stars, Cosmic Flame carries the heat of collapsing suns. Whole worlds have gone dark in the wake of its wings.",
-    111: "Half machine, half fire. The Cybernetic Phoenix was forged when a dying network chose to burn itself alive rather than be controlled.",
-    333: "From the ruins of a golden city rose Golden Ash. Everything it touches turns first to gold, then to ash.",
-    444: "Nebula Wing spreads galaxies across the void with a single beat. Beautiful, silent, and final.",
-    555: "The last and the first. As the old phoenix burns, Eternal Rebirth is born from its white-hot core — a warning and a promise.",
+    1: "The first flame. Alone on the highest peak, Sovereign Ember greets every sunrise — majesty that needs no crowd.",
+    88: "Born between the stars, Cosmic Flame carries light across galaxies where no fire has burned before.",
+    111: "A phoenix of living crystal with a thinking core. Its light is clear, controlled and endlessly patient.",
+    333: "From cold grey ash rose Golden Ash. Proof that every ending carries the spark of a beginning.",
+    444: "Radiant Wing is pure energy — ribbons of plasma that sing as they fly.",
+    555: "Phoenix, dragon and Simorgh in one sky. The last and the first of the collection — a legend and a promise.",
 }
 
 _IMG = "https://static.prod-images.emergentagent.com/jobs/2857b787-092b-48b2-8f7f-f9178af03cef/images"
 
 THEMES = [
-    {"slug": "wings-of-nations", "title": "Wings of Nations",
-     "image": f"{_IMG}/e0a7945b788dcd4afa72f79a48b5aee4940963b554d1097195ae1999b01ba8c8.jpeg",
-     "story": "A great eagle takes the phoenix's fire. Its burning wings carry the colors of fallen nations — a quiet warning that no empire is eternal."},
-    {"slug": "under-the-wings", "title": "Under the Wings",
-     "image": f"{_IMG}/58e5b8916cf79244270923edef295984e59aaa471899e703cf58238cb81b14a9.jpeg",
-     "story": "Beneath the phoenix's shadow, the Earth begins to glow. One beat of these wings and coastlines turn to embers. Beauty and ruin share the same breath."},
-    {"slug": "grip-of-fire", "title": "Grip of Fire",
-     "image": f"{_IMG}/3d56ce535681b86d90271c4982f8289fb83e40b3fa6de936cae920ed9ce10529.jpeg",
-     "story": "An eagle-phoenix clutches a cracked, burning world. What it holds, it can save — or set alight. The choice was never ours."},
-    {"slug": "molten-ascension", "title": "Molten Ascension",
-     "image": f"{_IMG}/870dc62a3221c20dd5a6ff8c7b01745de6246392ce5aed8af38b11d8a2fbb593.jpeg",
-     "story": "From the throat of an erupting mountain, the firebird climbs. Every eruption is only the world remembering how to begin again."},
-    {"slug": "warning-of-rebirth", "title": "Warning of Rebirth",
-     "image": f"{_IMG}/1e90d8f421206c9b7f3e7441cba850e2c88c1be969d92d6982e1d490b8b1785f.jpeg",
-     "story": "The old phoenix crumbles to white ash as a new one is born from its core. A warning written in fire — even intelligence must burn to be reborn."},
-    {"slug": "the-descent", "title": "The Descent",
-     "image": f"{_IMG}/6dc40a1249a973b230be64d717f71cdb7c56e41c230119c7c50ea30fc80875ca.jpeg",
-     "story": "A colossal firebird falls upon a sleeping city. Rivers of flame fill the streets. By dawn, only the story remains."},
-    {"slug": "ashen-dawn", "title": "Ashen Dawn",
-     "image": f"{_IMG}/d19c0135607b5ee62009756e9fd9e3c05a5e7ad6036e9b646f6748e2f2e1551d.jpeg",
-     "story": "Over a smoldering battlefield the phoenix waits for sunrise. Faint banners burn in the distance. Endings, too, can be gentle."},
-    {"slug": "firestorm", "title": "Firestorm",
-     "image": f"{_IMG}/7b67062c7200d794d1e4803c1777bd89c9cb3a10c1022b1bdc511e5474e7fa39.jpeg",
-     "story": "Walls of flame close in, and still the firebird flies. It does not fear the storm — it is the storm."},
-    {"slug": "phoenix-flare", "title": "Phoenix Flare",
-     "image": f"{_IMG}/d010879e865ac58915a660ca7261d61a38c7ffb32c33ff052e00a7458d1abd95.jpeg",
-     "story": "A lone firebird flares against the dark, embers scattering like sparks from a struck blade. A small fire that refuses to die."},
-    {"slug": "ember-silhouette", "title": "Ember Silhouette",
-     "image": f"{_IMG}/de9cd9d897b98b3804ac978672e85f275e2507563ba39b5f54ef2740f1e29955.jpeg",
-     "story": "Only a silhouette of flame remains, ringed by drifting embers. What burned here once will rise here again."},
+    {"slug": "rising-from-ashes", "title": "Rising from Ashes",
+     "image": f"{_IMG}/56f432ddc280e602b54454346bf5a07b4c15738afeecfefba74154828fdea122.jpeg",
+     "story": "From cold grey ash a new flame stirs. Every ending holds the spark of a beginning."},
+    {"slug": "cosmic-flight", "title": "Cosmic Flight",
+     "image": f"{_IMG}/6617ad992ae5ea2a695bbc7a972eea345838854da974b7b17b3db9417c24a4f4.jpeg",
+     "story": "Made of fire and starlight, the firebird crosses galaxies — a reminder that light travels farther than fear."},
+    {"slug": "four-elements", "title": "Four Elements",
+     "image": f"{_IMG}/f3fc91ddecaf23685042fc697e3f68243c375f109282d1463cc5e653f408aa50.jpeg",
+     "story": "Fire, wind, lightning and ice meet in one pair of wings. Balance is the firebird's true power."},
+    {"slug": "myth-keepers", "title": "Myth Keepers",
+     "image": f"{_IMG}/79e2b3f2d87cecf0a280cb213c4e53fa24e8f8cb55cdb602875a6233be4971d7.jpeg",
+     "story": "Phoenix, dragon and Simorgh share one sky. Old legends guard the same eternal flame."},
+    {"slug": "crystal-mind", "title": "Crystal Mind",
+     "image": f"{_IMG}/f87a2aa5b03006e8dd6f80f90cd47968ba5cfd670fac056ffa98af93cafb3e0a.jpeg",
+     "story": "A firebird of living crystal with a thinking core. Intelligence shines brightest when it is clear."},
+    {"slug": "neon-skies", "title": "Neon Skies",
+     "image": f"{_IMG}/a388d3dfb062bc4172973a46a27f07674210bb6f776751afdcae042a2245e413.jpeg",
+     "story": "Above rain-soaked towers, a chrome firebird glows in neon. The future is bright — and fast."},
+    {"slug": "pure-line", "title": "Pure Line",
+     "image": f"{_IMG}/49becb91fd9e73f8dc89ba78f1346c894afd68e53262a56c006f1db115a5a323.jpeg",
+     "story": "A few lines of flame, nothing more. Simplicity is the firebird at rest."},
+    {"slug": "living-flame", "title": "Living Flame",
+     "image": f"{_IMG}/1fde7320f6bfcebea3f176a4342829a86cc9814e3124d15160143fcaf2178e3b.jpeg",
+     "story": "Every feather burns, yet nothing is consumed. Real power is controlled fire."},
+    {"slug": "broken-chains", "title": "Broken Chains",
+     "image": f"{_IMG}/f0b389fa98a150801932949e7f7355067ff5f054633ec2c7f8fa29c465e9b548.jpeg",
+     "story": "The chains crack and the sky splits with light. A warning: some fires should never be set free without care."},
+    {"slug": "sealed-relic", "title": "Sealed Relic",
+     "image": f"{_IMG}/c49922a3b7568ad52b247c620d5b7d9b37206bf6c365a9375f16304ec971b82f.jpeg",
+     "story": "Sealed in an ancient orb, the firebird waits. Those who open it must be ready to carry its flame."},
+    {"slug": "guiding-hands", "title": "Guiding Hands",
+     "image": f"{_IMG}/1eae8cda074361f0dfb95d49c5580085c620d95e4c98c6faadf7b82caabc572e.jpeg",
+     "story": "Human hands hold reins of light around the fire. Power needs a careful guide."},
+    {"slug": "the-sentinel", "title": "The Sentinel",
+     "image": f"{_IMG}/eab284ffe29ce26aa5614dcca98877e6937a62d4b6302aae3d87aa4095646146.jpeg",
+     "story": "Perched on a pillar of stone, the firebird keeps watch. Its gaze is a quiet warning to the reckless."},
+    {"slug": "silent-skyline", "title": "Silent Skyline",
+     "image": f"{_IMG}/d208f65e4a6c5f6513f2b2a26895eee48a99f8a2ac1e7844e3d0c4d62de48873.jpeg",
+     "story": "Over an empty city at dusk, a lone firebird glides. The silence asks what we will build next."},
+    {"slug": "pure-energy", "title": "Pure Energy",
+     "image": f"{_IMG}/9af776bd6efccb277974ebab1373d8a9437a7e23ae723e822a13e4cd4dd1a1f0.jpeg",
+     "story": "No feathers, no body — only flowing energy. The firebird in its truest form."},
+    {"slug": "chain-of-light", "title": "Chain of Light",
+     "image": f"{_IMG}/6c70750f8ad79d463629a1a45a87a022573fc9a7d937772921661394d83e35b1.jpeg",
+     "story": "Wings of linked blocks, every one glowing. Trust, built piece by piece, can fly."},
+    {"slug": "the-sovereign", "title": "The Sovereign",
+     "image": f"{_IMG}/39f181bb9ec40a48f4c218e4cb7f6bcfbbf9d8c77039edf1725282bd7fc28167.jpeg",
+     "story": "Alone on the highest peak, the firebird greets the sun. Majesty needs no crowd."},
 ]
 
 ELEMENTS = ["Ember", "Solar", "Ash", "Magma", "Inferno", "Crimson", "Golden", "Cinder"]
@@ -77,7 +95,7 @@ BACKGROUNDS = ["Obsidian", "Nebula", "Molten", "Twilight", "Abyss"]
 
 async def seed_nft():
     existing = await db.nft_items.find_one({"token_id": 1})
-    if existing and existing.get("story") and await db.nft_items.count_documents({}) >= 555:
+    if existing and existing.get("image") == RARE_IMG[1] and await db.nft_items.count_documents({"minted": True}) >= 555:
         return
     await db.nft_items.delete_many({})
     docs = []
@@ -116,7 +134,7 @@ async def seed_nft():
                        "aura": AURAS[i % len(AURAS)],
                        "background": BACKGROUNDS[i % len(BACKGROUNDS)]},
             "floor_price_eth": floor,
-            "minted": is_rare or rnd.random() > 0.4,
+            "minted": True,
         })
     await db.nft_items.insert_many(docs)
 

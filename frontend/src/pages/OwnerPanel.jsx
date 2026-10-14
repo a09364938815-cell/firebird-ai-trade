@@ -1,12 +1,19 @@
-import React from "react";
+import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Crown, Users, DollarSign, TrendingUp } from "lucide-react";
+import { Crown, Users, DollarSign, TrendingUp, Eye, EyeOff } from "lucide-react";
 import api from "@/lib/api";
 import { useI18n } from "@/i18n";
 import { PageTitle, Panel, Stat, fmt, pnlColor } from "@/components/common";
 
 export default function OwnerPanel() {
   const { t } = useI18n();
+  const [revealed, setRevealed] = useState({});
+  const toggleEmail = (i) => {
+    if (revealed[i]) { setRevealed((r) => ({ ...r, [i]: false })); return; }
+    if (window.confirm(t("confirm_reveal_email"))) {
+      setRevealed((r) => ({ ...r, [i]: true }));
+    }
+  };
   const overview = useQuery({
     queryKey: ["owner-overview"],
     queryFn: () => api.get("/owner/overview").then((r) => r.data),
@@ -74,8 +81,17 @@ export default function OwnerPanel() {
             </thead>
             <tbody>
               {users.map((u, i) => (
-                <tr key={`${u.email}-${i}`} className="border-t border-border/50" data-testid={`owner-user-${i}`}>
-                  <td className="py-2.5 mono">{u.email}</td>
+                <tr key={`${u.username}-${i}`} className="border-t border-border/50" data-testid={`owner-user-${i}`}>
+                  <td className="py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="mono font-medium">{u.username}</span>
+                      <button onClick={() => toggleEmail(i)} data-testid={`owner-view-email-${i}`}
+                        className="p-0.5 rounded hover:bg-secondary text-muted-foreground" title={t("view_email_private")}>
+                        {revealed[i] ? <EyeOff size={13} /> : <Eye size={13} />}
+                      </button>
+                      {revealed[i] && <span className="mono text-[0.6875rem] text-gold" data-testid={`owner-email-${i}`}>{u.email}</span>}
+                    </div>
+                  </td>
                   <td>{u.role === "admin" ? <span className="text-gold text-xs">{t("role_owner")}</span> : <span className="text-xs text-muted-foreground">{t("role_user")}</span>}</td>
                   <td className="mono text-xs">{u.joined}</td>
                   <td className="mono">{u.trades}</td>
@@ -91,9 +107,16 @@ export default function OwnerPanel() {
         {/* Mobile card list */}
         <div className="md:hidden space-y-2">
           {users.map((u, i) => (
-            <div key={`${u.email}-${i}`} className="p-3 rounded-lg bg-secondary/40" data-testid={`owner-user-card-${i}`}>
+            <div key={`${u.username}-${i}`} className="p-3 rounded-lg bg-secondary/40" data-testid={`owner-user-card-${i}`}>
               <div className="flex items-center justify-between mb-2">
-                <span className="mono text-xs">{u.email}</span>
+                <div className="flex items-center gap-2">
+                  <span className="mono text-xs font-medium">{u.username}</span>
+                  <button onClick={() => toggleEmail(i)} data-testid={`owner-view-email-card-${i}`}
+                    className="p-0.5 rounded hover:bg-secondary text-muted-foreground">
+                    {revealed[i] ? <EyeOff size={12} /> : <Eye size={12} />}
+                  </button>
+                  {revealed[i] && <span className="mono text-[0.625rem] text-gold">{u.email}</span>}
+                </div>
                 {u.role === "admin" ? <span className="text-gold text-xs">{t("role_owner")}</span> : <span className="text-xs text-muted-foreground">{t("role_user")}</span>}
               </div>
               <div className="flex items-center justify-between flex-wrap gap-2 text-xs">

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createChart, CandlestickSeries, HistogramSeries, LineSeries } from "lightweight-charts";
 import { API } from "@/lib/api";
+import { useI18n } from "@/i18n";
 
 const UP = "#26a17b";
 const DOWN = "#e5484d";
@@ -80,6 +81,7 @@ async function loadHistory(symbol, interval) {
 }
 
 export function TradingChart({ symbol, interval, levels, showZones = true, onFlow }) {
+  const { t } = useI18n();
   const containerRef = useRef(null);
   const candleSeriesRef = useRef(null);
   const priceLinesRef = useRef([]);
@@ -134,8 +136,8 @@ export function TradingChart({ symbol, interval, levels, showZones = true, onFlo
     const refreshFlow = () => {
       const last = mfi.length ? mfi[mfi.length - 1].value : null;
       if (last == null) return;
-      const label = last >= 80 ? "Overbought" : last <= 20 ? "Oversold" : last >= 50 ? "Bullish inflow" : "Bearish outflow";
-      const meta = { mfi: last, label, positive: last >= 50 };
+      const labelKey = last >= 80 ? "flow_overbought" : last <= 20 ? "flow_oversold" : last >= 50 ? "flow_bullish" : "flow_bearish";
+      const meta = { mfi: last, labelKey, positive: last >= 50 };
       setFlow(meta);
       onFlow && onFlow(meta);
     };
@@ -152,9 +154,11 @@ export function TradingChart({ symbol, interval, levels, showZones = true, onFlo
       mfiSeries.createPriceLine({ price: 20, color: "rgba(38,161,123,0.4)", lineWidth: 1, lineStyle: 2 });
       chart.timeScale().fitContent();
       const panes = chart.panes();
-      if (panes[0]) panes[0].setHeight(280);
-      if (panes[1]) panes[1].setHeight(90);
-      if (panes[2]) panes[2].setHeight(90);
+      const mobile = typeof window !== "undefined" && window.innerWidth < 768;
+      const [hMain, hVol, hMfi] = mobile ? [190, 60, 60] : [280, 90, 90];
+      if (panes[0]) panes[0].setHeight(hMain);
+      if (panes[1]) panes[1].setHeight(hVol);
+      if (panes[2]) panes[2].setHeight(hMfi);
       refreshFlow();
       drawZones();
 
@@ -186,7 +190,7 @@ export function TradingChart({ symbol, interval, levels, showZones = true, onFlo
       let best = null, bestD = Infinity;
       for (const z of zonesMetaRef.current) { const d = Math.abs(z.price - price) / z.price; if (d < bestD) { bestD = d; best = z; } }
       if (best && bestD < 0.0025) {
-        setTip({ x: param.point.x, y: param.point.y, text: `${best.type === "S" ? "Support" : "Resistance"} at $${money(best.price)} · Hit ${best.hits}× · Vol $${abbrUsd(best.volume)}` });
+        setTip({ x: param.point.x, y: param.point.y, type: best.type, price: best.price, hits: best.hits, volume: best.volume });
       } else setTip(null);
     };
     chart.subscribeCrosshairMove(onMove);
@@ -225,24 +229,24 @@ export function TradingChart({ symbol, interval, levels, showZones = true, onFlo
   return (
     <div>
       <div className="relative">
-        <div ref={containerRef} data-testid="trading-chart" className="w-full h-[460px]" />
+        <div ref={containerRef} data-testid="trading-chart" className="w-full h-[320px] md:h-[460px]" />
         {tip && (
-          <div data-testid="zone-tooltip"
-            className="pointer-events-none absolute z-30 px-2 py-1 rounded-md text-[10px] mono bg-background/95 border border-border shadow-lg whitespace-nowrap"
+          <div data-testid="zone-tooltip" dir="ltr"
+            className="pointer-events-none absolute z-30 px-2 py-1 rounded-md text-[0.625rem] mono bg-background/95 border border-border shadow-lg whitespace-nowrap"
             style={{ left: Math.max(4, Math.min(tip.x + 12, (containerRef.current?.clientWidth || 400) - 180)), top: Math.max(4, tip.y - 10) }}>
-            {tip.text}
+            {t(tip.type === "S" ? "support" : "resistance")}: ${money(tip.price)} · ×{tip.hits} · ${abbrUsd(tip.volume)}
           </div>
         )}
       </div>
-      <div className="flex items-center justify-between mt-2 px-1 text-[11px] text-muted-foreground flex-wrap gap-2">
+      <div className="flex items-center justify-between mt-2 px-1 text-[0.6875rem] text-muted-foreground flex-wrap gap-2">
         <span className="flex items-center gap-3 flex-wrap">
-          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(38,161,123,0.6)" }} /> Volume up</span>
-          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(229,72,77,0.6)" }} /> Volume down</span>
-          <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5" style={{ background: "#f7931a" }} /> Money Flow (MFI 14)</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(38,161,123,0.6)" }} /> {t("volume_up")}</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(229,72,77,0.6)" }} /> {t("volume_down")}</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5" style={{ background: "#f7931a" }} /> {t("money_flow_mfi")}</span>
         </span>
         {flow && (
           <span data-testid="money-flow-reading" className={`mono font-medium ${flow.positive ? "text-success" : "text-danger"}`}>
-            MFI {flow.mfi} · {flow.label}
+            <span dir="ltr">MFI {flow.mfi}</span> · {t(flow.labelKey)}
           </span>
         )}
       </div>

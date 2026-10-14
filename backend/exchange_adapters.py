@@ -46,12 +46,13 @@ class BaseExchangeAdapter:
 
 class CCXTAdapter(BaseExchangeAdapter):
     """Generic adapter for any CCXT-supported exchange (CoinEx, XT, Toobit…)."""
-    def __init__(self, api_key="", secret="", ccxt_id="coinex", name=None, kind="cex"):
+    def __init__(self, api_key="", secret="", ccxt_id="coinex", name=None, kind="cex", passphrase=""):
         super().__init__(api_key, secret)
         self.ccxt_id = ccxt_id
         self.id = ccxt_id
         self.name = name or ccxt_id.upper()
         self.kind = kind
+        self.passphrase = passphrase
 
     def _client(self):
         if not ccxt_async or not hasattr(ccxt_async, self.ccxt_id):
@@ -60,6 +61,8 @@ class CCXTAdapter(BaseExchangeAdapter):
         cfg = {"enableRateLimit": True, "timeout": 8000}
         if self.api_key:
             cfg.update({"apiKey": self.api_key, "secret": self.secret})
+            if self.passphrase:
+                cfg["password"] = self.passphrase
         return cls(cfg)
 
     async def fetch_price(self, symbol: str) -> float | None:
@@ -92,6 +95,30 @@ class CCXTAdapter(BaseExchangeAdapter):
             return out[:30]
         except Exception:
             return []
+        finally:
+            try:
+                await client.close()
+            except Exception:
+                pass
+
+    async def probe_permissions(self) -> dict:
+        """Best-effort detection of trade/withdraw permissions so we can refuse
+        keys that are not strictly read-only. Returns booleans, or None when the
+        exchange does not expose a permission endpoint (unknown)."""
+        if not self.api_key:
+            return {"can_trade": None, "can_withdraw": None, "source": "no_keys"}
+        client = self._client()
+        if not client:
+            return {"can_trade": None, "can_withdraw": None, "source": "unavailable"}
+        try:
+            if self.ccxt_id == "binance" and hasattr(client, "sapiGetAccountApiRestrictions"):
+                r = await client.sapiGetAccountApiRestrictions()
+                can_trade = bool(r.get("enableSpotAndMarginTrading") or r.get("enableFutures") or r.get("enableMargin"))
+                can_withdraw = bool(r.get("enableWithdrawals") or r.get("enableInternalTransfer"))
+                return {"can_trade": can_trade, "can_withdraw": can_withdraw, "source": "binance"}
+            return {"can_trade": None, "can_withdraw": None, "source": "unknown"}
+        except Exception:
+            return {"can_trade": None, "can_withdraw": None, "source": "error"}
         finally:
             try:
                 await client.close()
@@ -175,13 +202,15 @@ class PancakeDexAdapter(UniswapDexAdapter):
 
 
 # Registry: id -> (adapter factory, needs ccxt_id)
-def build_adapter(exchange_id: str, api_key: str = "", secret: str = "") -> BaseExchangeAdapter | None:
+def build_adapter(exchange_id: str, api_key: str = "", secret: str = "", passphrase: str = "") -> BaseExchangeAdapter | None:
     eid = exchange_id.lower()
     ccxt_map = {
         "coinex": ("coinex", "CoinEx"),
         "xt": ("xt", "XT.com"),
         "toobit": ("toobit", "Toobit"),
         "binance": ("binance", "Binance"),
+        "mexc": ("mexc", "MEXC"),
+        "lbank": ("lbank", "LBank"),
         "kraken": ("kraken", "Kraken"),
         "okx": ("okx", "OKX"),
         "bybit": ("bybit", "Bybit"),
@@ -193,7 +222,7 @@ def build_adapter(exchange_id: str, api_key: str = "", secret: str = "") -> Base
             a = UniswapDexAdapter(api_key, secret)
             a.id, a.name, a.kind = "toobit", "Toobit", "cex"
             return a
-        return CCXTAdapter(api_key, secret, ccxt_id=cid, name=nm)
+        return CCXTAdapter(api_key, secret, ccxt_id=cid, name=nm, passphrase=passphrase)
     custom = {
         "nobitex": NobitexAdapter, "wallex": WallexAdapter, "bitpin": BitpinAdapter,
         "jupiter": JupiterDexAdapter, "uniswap": UniswapDexAdapter, "pancakeswap": PancakeDexAdapter,
@@ -204,12 +233,15 @@ def build_adapter(exchange_id: str, api_key: str = "", secret: str = "") -> Base
 
 
 SUPPORTED_EXCHANGES = [
+    {"id": "binance", "name": "Binance", "kind": "cex"},
+    {"id": "mexc", "name": "MEXC", "kind": "cex"},
+    {"id": "toobit", "name": "Toobit", "kind": "cex"},
+    {"id": "xt", "name": "XT.com", "kind": "cex"},
+    {"id": "lbank", "name": "LBank", "kind": "cex"},
+    {"id": "coinex", "name": "CoinEx", "kind": "cex"},
     {"id": "nobitex", "name": "Nobitex", "kind": "iranian_cex"},
     {"id": "wallex", "name": "Wallex", "kind": "iranian_cex"},
     {"id": "bitpin", "name": "Bitpin", "kind": "iranian_cex"},
-    {"id": "toobit", "name": "Toobit", "kind": "cex"},
-    {"id": "coinex", "name": "CoinEx", "kind": "cex"},
-    {"id": "xt", "name": "XT.com", "kind": "cex"},
     {"id": "uniswap", "name": "Uniswap", "kind": "dex"},
     {"id": "pancakeswap", "name": "PancakeSwap", "kind": "dex"},
     {"id": "jupiter", "name": "Jupiter", "kind": "dex"},
@@ -219,10 +251,10 @@ SUPPORTED_EXCHANGES = [
 class ExchangeManager:
     """Handles all adapters simultaneously for a user."""
     def __init__(self, connections: list[dict]):
-        # connections: [{exchange, api_key, secret}]
+        # connections: [{exchange, api_key, secret, passphrase}]
         self.adapters = []
         for c in connections:
-            a = build_adapter(c["exchange"], c.get("api_key", ""), c.get("secret", ""))
+            a = build_adapter(c["exchange"], c.get("api_key", ""), c.get("secret", ""), c.get("passphrase", ""))
             if a:
                 self.adapters.append((c["exchange"], a))
 

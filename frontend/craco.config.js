@@ -132,6 +132,25 @@ let webpackConfig = {
       if (emergentOverlay) {
         webpackConfig.plugins.push(emergentOverlay.webpackPlugin);
       }
+
+      // web3 deps (wagmi/viem/walletconnect) ship ESM + sourcemaps that CRA's
+      // source-map-loader chokes on. Skip node_modules for source maps and
+      // silence the resulting noise so the build stays green.
+      (webpackConfig.module.rules || []).forEach((rule) => {
+        if (rule.enforce === "pre" && Array.isArray(rule.use)) {
+          const usesSML = rule.use.some((u) => {
+            const loader = typeof u === "string" ? u : (u && u.loader) || "";
+            return loader.includes("source-map-loader");
+          });
+          if (usesSML) rule.exclude = /node_modules/;
+        }
+      });
+      webpackConfig.ignoreWarnings = [
+        ...(webpackConfig.ignoreWarnings || []),
+        /Failed to parse source map/,
+        { module: /node_modules/, message: /Can't resolve/ },
+      ];
+
       return webpackConfig;
     },
   },

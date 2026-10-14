@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Bot, Zap, ShieldCheck, ShieldAlert, TrendingDown } from "lucide-react";
+import { Bot, Zap, ShieldCheck, ShieldAlert, TrendingDown, RotateCcw, Wallet } from "lucide-react";
 import api, { API, formatApiErrorDetail } from "@/lib/api";
 import { useI18n } from "@/i18n";
-import { PageTitle, Panel, Stat, fmt, pnlColor } from "@/components/common";
+import { PageTitle, Panel, Stat, fmt, pnlColor, toLatin } from "@/components/common";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export default function AutoTrade() {
   const { t, tv } = useI18n();
@@ -12,6 +16,8 @@ export default function AutoTrade() {
   const [on, setOn] = useState(false);
   const [log, setLog] = useState([]);
   const [halt, setHalt] = useState(null);
+  const [demoBal, setDemoBal] = useState(500);
+  const [resetting, setResetting] = useState(false);
 
   const settings = useQuery({
     queryKey: ["settings"],
@@ -61,7 +67,7 @@ export default function AutoTrade() {
           ...(data.opened || []).map((o) => `${tv("BUY")} ${o.symbol} ${o.timeframe} · ${t("score")} ${o.score} · ${o.leverage}x`),
           ...(data.closed || []).map((c) => `${tv(c.reason)} ${c.symbol} · $${c.pnl}`),
         ];
-        if (events.length) setLog((l) => [...events.map((e) => ({ e, t: new Date().toLocaleTimeString() })), ...l].slice(0, 20));
+        if (events.length) setLog((l) => [...events.map((e) => ({ e, t: new Date().toLocaleTimeString("en-GB") })), ...l].slice(0, 20));
         qc.invalidateQueries({ queryKey: ["portfolio"] });
         qc.invalidateQueries({ queryKey: ["auto-status"] });
       } catch (e) {
@@ -83,6 +89,30 @@ export default function AutoTrade() {
       toast.success(t("bot_reauthorized"));
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const resetDemo = async () => {
+    const amount = Number(demoBal);
+    if (!amount || amount < 100) {
+      toast.error(t("demo_min_balance_error"));
+      return;
+    }
+    setResetting(true);
+    try {
+      const { data } = await api.post("/trading/demo/reset", { balance: amount });
+      setOn(false);
+      setHalt(null);
+      setLog([]);
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      qc.invalidateQueries({ queryKey: ["portfolio"] });
+      qc.invalidateQueries({ queryKey: ["auto-status"] });
+      qc.invalidateQueries({ queryKey: ["reports"] });
+      toast.success(t("demo_reset_done", { bal: fmt(data.demo_balance) }));
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err.response?.data?.detail));
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -137,6 +167,8 @@ export default function AutoTrade() {
         <span>🛑 {t("rule_circuit")}</span>
         <span>✋ {t("rule_halt")}</span>
         <span>📈 {t("rule_scan")}</span>
+        <span>🎯 {t("rule_entry", { score: lim.entry_min_score ?? 70, tfs: (lim.entry_timeframes || ["15m","1h","4h","1d"]).join(" / ") })}</span>
+        <span>⏳ {t("rule_cooldown", { losses: lim.cooldown_losses ?? 2, min: lim.cooldown_minutes ?? 30 })}</span>
       </div>
 
       {/* Rule 3-8: live risk status indicator */}
@@ -237,6 +269,56 @@ export default function AutoTrade() {
               ))}
             </div>
           )}
+        </Panel>
+      </div>
+
+      {/* Demo Account Settings — custom balance + full reset (demo data only) */}
+      <div className="mt-6">
+        <Panel title={t("demo_account_settings")} testid="demo-account-settings">
+          <p className="text-xs text-muted-foreground mb-4 flex items-center gap-1.5">
+            <Wallet size={14} className="text-gold" /> {t("demo_settings_desc")}
+          </p>
+          <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+            <div className="flex-1">
+              <label className="text-xs text-muted-foreground">{t("custom_demo_balance")}</label>
+              <div className="relative mt-1">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground mono" dir="ltr">$</span>
+                <input
+                  type="text" inputMode="decimal" value={demoBal} dir="ltr"
+                  onChange={(e) => setDemoBal(toLatin(e.target.value))}
+                  data-testid="demo-balance-input"
+                  className="w-full pl-7 pr-3 py-2.5 rounded-lg bg-input border border-border focus:border-primary outline-none mono"
+                />
+              </div>
+              <span className="text-[0.6875rem] text-muted-foreground mt-1 block">{t("demo_min_hint")}</span>
+            </div>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <button
+                  data-testid="reset-demo-open-button"
+                  disabled={resetting}
+                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg font-semibold border border-destructive/40 text-danger hover:bg-destructive/10 disabled:opacity-50"
+                >
+                  <RotateCcw size={16} /> {t("reset_demo_account")}
+                </button>
+              </AlertDialogTrigger>
+              <AlertDialogContent data-testid="reset-demo-dialog">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t("reset_demo_confirm_title")}</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t("reset_demo_confirm_desc", { bal: fmt(Number(demoBal) || 0) })}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-testid="reset-demo-cancel">{t("cancel")}</AlertDialogCancel>
+                  <AlertDialogAction onClick={resetDemo} data-testid="reset-demo-confirm"
+                    className="bg-destructive text-white hover:bg-destructive/90">
+                    {t("reset_demo_account")}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </Panel>
       </div>
     </div>

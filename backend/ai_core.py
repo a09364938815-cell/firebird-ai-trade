@@ -23,6 +23,19 @@ SYSTEM = (
 )
 
 
+LANG_NAMES = {
+    "en": "English", "fa": "Persian (Farsi)", "es": "Spanish", "de": "German",
+    "fr": "French", "zh": "Chinese (Simplified)", "ja": "Japanese", "ru": "Russian",
+    "pt": "Portuguese", "tr": "Turkish",
+}
+
+
+def _lang_rule(language):
+    name = LANG_NAMES.get((language or "en").lower()[:2], "English")
+    return (f"\n\nLANGUAGE: Write every user-facing sentence in {name}. "
+            "Keep JSON keys, rating enum values, ticker symbols and numbers exactly as specified.")
+
+
 def _chat(session_id: str, system: str = SYSTEM) -> LlmChat:
     return LlmChat(api_key=os.environ["EMERGENT_LLM_KEY"], session_id=session_id,
                    system_message=system).with_model(MODEL_PROVIDER, MODEL_NAME)
@@ -31,11 +44,13 @@ def _chat(session_id: str, system: str = SYSTEM) -> LlmChat:
 class ChatInput(BaseModel):
     message: str
     session_id: str | None = None
+    language: str | None = None
 
 
 class ScoreInput(BaseModel):
     symbol: str
     interval: str = "1h"
+    language: str | None = None
 
 
 @ai_router.post("/chat")
@@ -48,6 +63,7 @@ async def chat(data: ChatInput, user: dict = Depends(get_current_user)):
         t = tickers.get(c["symbol"], {})
         context_lines.append(f"{c['symbol']}: ${t.get('price')} ({t.get('change_24h')}% 24h)")
     system = SYSTEM + "\n\nLive market snapshot:\n" + "\n".join(context_lines)
+    system += _lang_rule(data.language)
     chat = _chat(session_id, system)
     reply = await chat.send_message(UserMessage(text=data.message))
     await db.ai_messages.insert_one({
@@ -86,7 +102,7 @@ async def score(data: ScoreInput, user: dict = Depends(get_current_user)):
         "entry_strategy (short string), exit_strategy (short string), risk (short string), "
         "summary (2 sentences). No markdown, no extra text."
     )
-    chat = _chat(f"score-{user['id']}-{symbol}")
+    chat = _chat(f"score-{user['id']}-{symbol}-{(data.language or 'en')[:2]}", SYSTEM + _lang_rule(data.language))
     raw = await chat.send_message(UserMessage(text=prompt))
     parsed = None
     try:
